@@ -1,7 +1,7 @@
 [project]
 name = "dndboard"
 version = "0.1.0"
-description = "DnD soundboard for Raspberry Pi 3B: 5x12 key matrix, LCD 1602A (I2C), EC11 encoder"
+description = "DnD soundboard for Raspberry Pi 3B: 6x14 key matrix, LCD 1602A (I2C), EC11 encoder"
 readme = "README.md"
 # lgpio (бэкенд GPIO для gpiozero) имеет готовые колёса только для Python 3.9–3.12
 requires-python = ">=3.11,<3.13"

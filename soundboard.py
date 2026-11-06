@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """DnD Soundboard для Raspberry Pi 3B.
 
-Железо: матрица клавиш 5x12, LCD 1602A по I2C, энкодер EC11 с кнопкой.
+Железо: матрица клавиш 6x14 с диодами, LCD 1602A по I2C, энкодер EC11 с кнопкой.
 
 Управление:
   [0][0]          — следующий банк звуков (по кругу)
-  [4][0] / [4][1] — фоновый трек назад / вперёд (запускает воспроизведение)
-  [4][2]          — стоп фоновой музыки
+  [5][0] / [5][1] — фоновый трек назад / вперёд (запускает воспроизведение)
+  [5][2]          — стоп фоновой музыки
   Энкодер: вращение — громкость, короткое нажатие — пауза/продолжить фон,
            удержание 1 с — Mute (вращение снимает Mute)
 
@@ -27,19 +27,24 @@ from keymap import BANKS, BG_TRACKS  # noqa: E402
 SOUNDS_DIR = BASE_DIR / "sounds"
 
 # --- Настройки -------------------------------------------------------------
-# GPIO 2/3 заняты I2C дисплеем.
-# ВНИМАНИЕ: GPIO 14/15 — это UART. Отключите serial console:
-#   sudo raspi-config -> Interface Options -> Serial Port -> login shell: No, hardware: No
-# Если ещё не паяли — лучше взять свободные GPIO 12 и 25 вместо 14 и 15.
-ROW_PINS = [4, 17, 27, 22, 10]
-COL_PINS = [9, 11, 5, 6, 13, 19, 26, 14, 15, 18, 23, 24]
+# Распределение GPIO (Pi 3B, всего 26 свободных: GPIO 2–27):
+#   I2C дисплей: 2, 3      Энкодер: 20, 21 + кнопка 16
+#   Матрица 6x14: 20 пинов (ниже)      Запасной: GPIO 8
+# Перед запуском в raspi-config (Interface Options):
+#   Serial Port -> login shell: No, hardware: No   (GPIO 14/15 заняты матрицей)
+#   SPI -> Disable                                  (GPIO 7, 9, 10, 11 заняты матрицей)
+#   I2C -> Enable
+# Диоды: строки подтянуты к 3.3 В, активный столбец тянется к земле, ток идёт
+# строка -> кнопка -> диод -> столбец. Анод к строке, катод (полоска) к столбцу.
+ROW_PINS = [4, 17, 27, 22, 10, 25]
+COL_PINS = [9, 11, 5, 6, 13, 19, 26, 14, 15, 18, 23, 24, 12, 7]
 ENC_A, ENC_B, ENC_BTN = 20, 21, 16
 
 ROWS, COLS = len(ROW_PINS), len(COL_PINS)
 KEY_BANK = (0, 0)
-KEY_BG_PREV = (4, 0)
-KEY_BG_NEXT = (4, 1)
-KEY_BG_STOP = (4, 2)
+KEY_BG_PREV = (ROWS - 1, 0)   # нижний левый угол
+KEY_BG_NEXT = (ROWS - 1, 1)
+KEY_BG_STOP = (ROWS - 1, 2)
 SPECIAL_KEYS = {KEY_BANK, KEY_BG_PREV, KEY_BG_NEXT, KEY_BG_STOP}
 
 VOLUME_STEP = 0.05
@@ -60,6 +65,26 @@ def pretty_name(path):
     return " ".join(p.capitalize() for p in parts)
 
 
+def check_keymap():
+    """Предупреждает, если раскладка в keymap.py не совпадает с размером матрицы."""
+    for b_idx, bank in enumerate(BANKS):
+        keys = bank["keys"]
+        if len(keys) != ROWS or any(len(row) != COLS for row in keys):
+            shape = f"{len(keys)}x{max((len(r) for r in keys), default=0)}"
+            print(f"Внимание: банк {b_idx + 1} ({bank['name']}) имеет размер {shape}, "
+                  f"а матрица {ROWS}x{COLS}. Лишние клавиши игнорируются, недостающие пустые.")
+
+
+def key_file(bank, r, c):
+    keys = BANKS[bank]["keys"]
+    if r < len(keys) and c < len(keys[r]) and (r, c) not in SPECIAL_KEYS:
+        return keys[r][c]
+    return None
+
+
+check_keymap()
+
+
 def print_map():
     labels = {KEY_BANK: "<< BANK >>", KEY_BG_PREV: "<< BG PREV >>",
               KEY_BG_NEXT: "<< BG NEXT >>", KEY_BG_STOP: "<< BG STOP >>"}
@@ -70,7 +95,7 @@ def print_map():
                 if (r, c) in labels:
                     label = labels[(r, c)]
                 else:
-                    f = bank["keys"][r][c]
+                    f = key_file(b_idx, r, c)
                     label = pretty_name(f) if f else "-"
                 print(f"  [{r}][{c:>2}] {label}")
     print("\n=== Фоновые треки ===")
@@ -140,7 +165,8 @@ pygame.mixer.set_num_channels(MIXER_CHANNELS)
 def load_banks():
     """Грузим в память только файлы из раскладки; повторяющийся файл — один раз."""
     cache = {}
-    wanted = sorted({f for bank in BANKS for row in bank["keys"] for f in row if f})
+    wanted = sorted({key_file(b, r, c) for b in range(len(BANKS))
+                     for r in range(ROWS) for c in range(COLS)} - {None})
     total = len(wanted)
     for i, f in enumerate(wanted, 1):
         if i % 10 == 0 or i == total:
@@ -151,16 +177,10 @@ def load_banks():
             print(f"Не загрузился {f}: {e}")
             cache[f] = None
 
-    loaded = []
-    for bank in BANKS:
-        grid = []
-        for r in range(ROWS):
-            row = bank["keys"][r] if r < len(bank["keys"]) else []
-            grid.append([
-                cache.get(row[c]) if c < len(row) and row[c] and (r, c) not in SPECIAL_KEYS else None
-                for c in range(COLS)
-            ])
-        loaded.append(grid)
+    loaded = [
+        [[cache.get(key_file(b, r, c)) for c in range(COLS)] for r in range(ROWS)]
+        for b in range(len(BANKS))
+    ]
     missing = sum(1 for s in cache.values() if s is None)
     if missing:
         print(f"Внимание: не найдено файлов: {missing}")
@@ -273,23 +293,28 @@ encoder_button.when_released = on_button_released
 
 
 # --- Фоновая музыка --------------------------------------------------------
-def play_bg(index):
+def play_bg(index, direction=1):
+    """Запускает трек index; если файл не открывается — пробует следующие
+    в направлении direction, чтобы один битый файл не блокировал список."""
     global bg_index, bg_state, ui_dirty
     with state_lock:
         if not BG_TRACKS:
             show_temp("No BG tracks")
             return
-        bg_index = index % len(BG_TRACKS)
-        path = SOUNDS_DIR / BG_TRACKS[bg_index]
-        try:
-            pygame.mixer.music.load(str(path))
-            pygame.mixer.music.play(-1)
-            bg_state = "playing"
-        except (pygame.error, FileNotFoundError, OSError) as e:
-            print(f"Не удалось запустить {path}: {e}")
+        for attempt in range(len(BG_TRACKS)):
+            bg_index = (index + attempt * direction) % len(BG_TRACKS)
+            path = SOUNDS_DIR / BG_TRACKS[bg_index]
+            try:
+                pygame.mixer.music.load(str(path))
+                pygame.mixer.music.play(-1)
+                bg_state = "playing"
+                break
+            except (pygame.error, FileNotFoundError, OSError) as e:
+                print(f"Пропускаю фоновый трек {path}: {e}")
+        else:
             pygame.mixer.music.stop()
             bg_state = "stopped"
-            show_temp("BG file missing")
+            show_temp("No BG files")
         ui_dirty = True
 
 
@@ -303,7 +328,7 @@ def handle_special_key(key):
             # Если фон остановлен — первое нажатие запускает текущий трек
             play_bg(bg_index if bg_state == "stopped" else bg_index + 1)
         elif key == KEY_BG_PREV:
-            play_bg(bg_index if bg_state == "stopped" else bg_index - 1)
+            play_bg(bg_index if bg_state == "stopped" else bg_index - 1, direction=-1)
         elif key == KEY_BG_STOP:
             pygame.mixer.music.stop()
             bg_state = "stopped"
@@ -318,7 +343,7 @@ def on_key(r, c):
     sound = loaded_banks[bank][r][c]
     if sound:
         sound.play()
-        show_temp(pretty_name(BANKS[bank]["keys"][r][c]))
+        show_temp(pretty_name(key_file(bank, r, c)))
 
 
 # --- Матрица клавиш --------------------------------------------------------
