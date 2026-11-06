@@ -1,0 +1,17 @@
+[project]
+name = "dndboard"
+version = "0.1.0"
+description = "DnD soundboard for Raspberry Pi 3B: 5x12 key matrix, LCD 1602A (I2C), EC11 encoder"
+readme = "README.md"
+# lgpio (бэкенд GPIO для gpiozero) имеет готовые колёса только для Python 3.9–3.12
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "pygame>=2.6",
+    # Железо Raspberry Pi. На Windows/macOS не ставится — там работает только `--map`.
+    "gpiozero>=2.0; sys_platform == 'linux'",
+    "lgpio>=0.2.2; sys_platform == 'linux'",
+    "smbus2>=0.5; sys_platform == 'linux'",
+]
+
+[tool.uv]
+package = false
