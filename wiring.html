@@ -1,0 +1,359 @@
+<title>Dndboard Wiring</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one workbench column — header pinout first (the thing you solder from), then per-part tables, key-cell schematic, pre-power checklist. */
+:root {
+  --bg: #f2f4ef;
+  --surface: #ffffff;
+  --fg: #19201b;
+  --muted: #5b665e;
+  --line: #d5dbd3;
+  --pcb: #1c5a3b;
+  --pcb-ink: #e9f3ec;
+  --pcb-muted: #a9c9b5;
+  --gold: #d6a531;
+  --c-5v: #d4372c;
+  --c-3v3: #e07b1f;
+  --c-gnd: #2a2f2b;
+  --c-i2c: #2f6fd6;
+  --c-row: #1f9a52;
+  --c-col: #8a4fd0;
+  --c-enc: #c99400;
+  --c-spare: #0f8d8d;
+  --c-res: #9aa39c;
+  --warn-bg: #fff3dc;
+  --warn-fg: #6b4a00;
+  --gnd-ink: #ffffff;
+  --f-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111612; --surface: #1a201b; --fg: #e3e9e2; --muted: #9aa69d; --line: #2c352e;
+    --pcb: #143f2a; --pcb-ink: #e6f2ea; --pcb-muted: #8fb69d; --gold: #e2b347;
+    --c-5v: #ff6a5c; --c-3v3: #ff9d47; --c-gnd: #c9cfca; --c-i2c: #6aa2ff; --c-row: #4cd486;
+    --c-col: #b78bff; --c-enc: #f2c230; --c-spare: #3fd0cf; --c-res: #6c766e;
+    --warn-bg: #3a2e12; --warn-fg: #f3d68e; --gnd-ink: #111612; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111612; --surface: #1a201b; --fg: #e3e9e2; --muted: #9aa69d; --line: #2c352e;
+  --pcb: #143f2a; --pcb-ink: #e6f2ea; --pcb-muted: #8fb69d; --gold: #e2b347;
+  --c-5v: #ff6a5c; --c-3v3: #ff9d47; --c-gnd: #c9cfca; --c-i2c: #6aa2ff; --c-row: #4cd486;
+  --c-col: #b78bff; --c-enc: #f2c230; --c-spare: #3fd0cf; --c-res: #6c766e;
+  --warn-bg: #3a2e12; --warn-fg: #f3d68e; --gnd-ink: #111612; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg);
+  font-family: var(--f-body); font-size: 15px; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 56px;
+}
+.wrap { max-width: 980px; margin: 0 auto; display: grid; gap: 40px; }
+h1, h2 { font-family: var(--f-display); font-weight: 700; letter-spacing: .01em; text-wrap: balance; margin: 0; line-height: 1.05; }
+h1 { font-size: clamp(2.1rem, 5vw, 3rem); }
+h2 { font-size: 1.65rem; }
+p { margin: 0; max-width: 65ch; }
+.eyebrow { font-family: var(--f-mono); font-size: .75rem; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
+header { display: grid; gap: 10px; }
+.lede { color: var(--muted); }
+section { display: grid; gap: 16px; min-width: 0; }
+code, .mono { font-family: var(--f-mono); font-size: .88em; }
+
+/* Legend */
+.legend { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+  font: 500 .85rem var(--f-body); color: var(--fg);
+  background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px 5px 8px;
+}
+.chip:focus-visible { outline: 2px solid var(--c-i2c); outline-offset: 2px; }
+.chip[aria-pressed="true"] { border-color: var(--fg); box-shadow: inset 0 0 0 1px var(--fg); }
+.dot { width: 12px; height: 12px; border-radius: 50%; background: var(--g); flex: none; }
+.dot.hollow { background: transparent; border: 2px solid var(--g); }
+.hint { font-size: .85rem; color: var(--muted); }
+
+/* Header board */
+.board-wrap { overflow-x: auto; }
+.board {
+  background: var(--pcb); color: var(--pcb-ink); border-radius: 14px;
+  padding: 18px 14px 14px; min-width: 340px; max-width: 640px; margin: 0 auto;
+  display: grid; gap: 10px;
+}
+.board-cap { display: flex; justify-content: space-between; gap: 12px; font-family: var(--f-mono); font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; color: var(--pcb-muted); }
+.pins { display: grid; grid-template-columns: 1fr auto auto 1fr; column-gap: 8px; row-gap: 3px; align-items: center; }
+.lbl { font-family: var(--f-mono); font-size: .74rem; line-height: 1.25; min-width: 0; transition: opacity .15s; }
+.lbl.l { text-align: right; }
+.lbl b { font-weight: 600; color: var(--pcb-ink); }
+.lbl span { color: var(--pcb-muted); }
+.lbl.unused b, .lbl.unused span { color: var(--pcb-muted); opacity: .65; font-weight: 400; }
+.pin {
+  width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+  font: 600 .66rem var(--f-mono); color: #fff; background: var(--g);
+  box-shadow: 0 0 0 2px var(--gold); transition: opacity .15s, transform .15s;
+}
+.pin.sq { border-radius: 4px; }
+.pin.unused { background: transparent; color: var(--pcb-muted); box-shadow: 0 0 0 2px color-mix(in srgb, var(--gold) 55%, transparent); }
+.pin.spare { background: transparent; color: var(--pcb-ink); box-shadow: 0 0 0 2px var(--gold), inset 0 0 0 3px var(--c-spare); }
+.pin.gndpin { color: var(--gnd-ink); }
+.dim .pin:not(.on), .dim .lbl:not(.on) { opacity: .22; }
+.dim .pin.on { transform: scale(1.12); }
+@media (prefers-reduced-motion: reduce) { .pin, .lbl { transition: none; } .dim .pin.on { transform: none; } }
+
+/* Tables */
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+@media (max-width: 640px) { .grid2 { grid-template-columns: 1fr; } }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: grid; gap: 10px; min-width: 0; align-content: start; }
+.card h3 { margin: 0; font: 600 1.05rem var(--f-body); display: flex; align-items: center; gap: 8px; }
+.tbl-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font: 600 .72rem var(--f-mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+td { font-size: .9rem; }
+td.mono { font-family: var(--f-mono); font-size: .85rem; }
+td.phys { font-weight: 600; }
+.note { font-size: .85rem; color: var(--muted); }
+
+/* Callouts */
+.warn { background: var(--warn-bg); color: var(--warn-fg); border-radius: 10px; padding: 14px 16px; display: grid; gap: 6px; }
+.warn strong { font-weight: 600; }
+
+/* Schematic */
+.schem { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; overflow-x: auto; }
+.schem svg { display: block; width: 100%; max-width: 620px; min-width: 420px; height: auto; margin: 0 auto; }
+
+/* Checklist */
+ol.check { margin: 0; padding-left: 1.4em; display: grid; gap: 8px; max-width: 70ch; }
+ol.check li::marker { font-family: var(--f-mono); color: var(--muted); }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Raspberry Pi 3B v1.2 · 40-pin header · BCM numbering in code</div>
+    <h1>Dndboard Wiring</h1>
+    <p class="lede">Every connection for the 6×14 key matrix, the LCD 1602A on I2C and the EC11 encoder. 25 of 26 GPIO pins are used; GPIO 8 is the only spare. Physical pin numbers are what you count on the header; GPIO numbers are what <code>soundboard.py</code> uses.</p>
+  </header>
+
+  <section aria-labelledby="h-header">
+    <h2 id="h-header">Header pinout</h2>
+    <div class="legend" id="legend" role="group" aria-label="Highlight a group"></div>
+    <p class="hint">Tap a group to highlight its pins. Pin 1 has the square pad and sits at the end of the header farthest from the USB ports. Odd pins are on the inner row, even pins on the board edge.</p>
+    <div class="board-wrap">
+      <div class="board" id="board">
+        <div class="board-cap"><span>Inner row · odd</span><span>Board edge · even</span></div>
+        <div class="pins" id="pins"></div>
+        <div class="board-cap"><span>Pin 39–40 · toward USB ports</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-parts">
+    <h2 id="h-parts">Connections by part</h2>
+    <div class="grid2" id="parts"></div>
+  </section>
+
+  <section aria-labelledby="h-cell">
+    <h2 id="h-cell">One key, with its diode</h2>
+    <p>Rows are pulled up to 3.3 V inside the Pi. The code pulls one column low at a time and reads which rows drop. Current flows row → switch → diode → column, so the <strong>anode faces the row</strong> and the <strong>cathode stripe faces the column</strong>. Every one of the 84 keys is wired the same way.</p>
+    <div class="schem">
+      <svg viewBox="0 0 620 230" role="img" aria-label="Row wire goes to one switch leg; the other switch leg goes to a diode anode; the diode cathode, marked with a stripe, goes to the column wire.">
+        <defs>
+          <style>
+            .w { stroke-width: 3; fill: none; stroke-linecap: round; }
+            .t { font-family: var(--f-mono); font-size: 13px; }
+            .tl { font-family: var(--f-body); font-size: 13px; }
+          </style>
+        </defs>
+        <!-- row bus -->
+        <line class="w" x1="20" y1="40" x2="600" y2="40" style="stroke: var(--c-row)"/>
+        <text class="t" x="20" y="28" style="fill: var(--c-row)">ROW (e.g. R2 · GPIO 27) · pulled up</text>
+        <!-- column bus -->
+        <line class="w" x1="470" y1="20" x2="470" y2="215" style="stroke: var(--c-col)"/>
+        <text class="t" x="460" y="194" text-anchor="end" style="fill: var(--c-col)">COLUMN</text>
+        <text class="t" x="460" y="210" text-anchor="end" style="fill: var(--c-col)">(e.g. C5 · GPIO 19)</text>
+        <!-- drop from row -->
+        <line class="w" x1="120" y1="40" x2="120" y2="100" style="stroke: var(--fg)"/>
+        <circle cx="120" cy="40" r="5" style="fill: var(--fg)"/>
+        <!-- switch -->
+        <circle cx="120" cy="104" r="4" style="fill: var(--surface); stroke: var(--fg); stroke-width: 2"/>
+        <circle cx="120" cy="150" r="4" style="fill: var(--surface); stroke: var(--fg); stroke-width: 2"/>
+        <line x1="120" y1="108" x2="140" y2="146" style="stroke: var(--fg); stroke-width: 3; stroke-linecap: round"/>
+        <text class="tl" x="152" y="132" style="fill: var(--muted)">key switch</text>
+        <!-- to diode -->
+        <polyline class="w" points="120,154 120,170 260,170" style="stroke: var(--fg)"/>
+        <!-- diode: triangle pointing right + bar -->
+        <polygon points="260,154 260,186 300,170" style="fill: var(--fg)"/>
+        <line x1="302" y1="152" x2="302" y2="188" style="stroke: var(--fg); stroke-width: 4"/>
+        <text class="tl" x="236" y="208" style="fill: var(--muted)">1N4148</text>
+        <text class="t" x="232" y="146" style="fill: var(--muted)">A</text>
+        <text class="t" x="308" y="146" style="fill: var(--muted)">K ▌stripe</text>
+        <line class="w" x1="304" y1="170" x2="470" y2="170" style="stroke: var(--fg)"/>
+        <circle cx="470" cy="170" r="5" style="fill: var(--fg)"/>
+        <!-- current arrow -->
+        <text class="tl" x="330" y="160" style="fill: var(--muted)">current →</text>
+      </svg>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-warn">
+    <h2 id="h-warn">Before the first power-on</h2>
+    <div class="warn">
+      <strong>The LCD backpack can put 5 V on the Pi's I2C pins.</strong>
+      <p>The PCF8574 board runs from 5 V (pin 2), and most of them have 4.7 kΩ pull-up resistors from SDA and SCL to that 5 V. Pi GPIO pins are 3.3 V only. Many people run it like this without trouble, but it is out of spec. The safe options: remove the two pull-up resistors on the backpack (the Pi has its own 1.8 kΩ pull-ups to 3.3 V), or put a small I2C level shifter between them.</p>
+    </div>
+    <ol class="check">
+      <li>Every diode faces the same way: stripe toward the column wire.</li>
+      <li>With a multimeter, no row is shorted to another row, no column to another column, and nothing to 5 V or GND.</li>
+      <li>Nothing is connected to pins 27 and 28 (ID EEPROM) or to the spare pin 24 unless you add something there.</li>
+      <li>In <code>sudo raspi-config</code> → Interface Options: I2C on, SPI off, Serial Port with login shell off and serial hardware off.</li>
+      <li>After boot, <code>i2cdetect -y 1</code> shows the LCD at <code>27</code> (or <code>3f</code>).</li>
+      <li>Run <code>uv run soundboard.py</code>. If the volume goes the wrong way when you turn the knob, swap the A and B wires or swap 20 and 21 in the code.</li>
+    </ol>
+  </section>
+</div>
+
+<script>
+const GROUPS = {
+  "5v":    { name: "5 V power", color: "var(--c-5v)" },
+  "3v3":   { name: "3.3 V", color: "var(--c-3v3)" },
+  "gnd":   { name: "Ground", color: "var(--c-gnd)" },
+  "i2c":   { name: "LCD · I2C", color: "var(--c-i2c)" },
+  "row":   { name: "Matrix rows", color: "var(--c-row)" },
+  "col":   { name: "Matrix columns", color: "var(--c-col)" },
+  "enc":   { name: "Encoder", color: "var(--c-enc)" },
+  "spare": { name: "Spare", color: "var(--c-spare)", hollow: true },
+};
+
+// Physical pin -> [label, role, group, used]
+const P = {
+  1:  ["3V3", "not used", "3v3", false],
+  2:  ["5V", "LCD VCC", "5v", true],
+  3:  ["GPIO 2", "LCD SDA", "i2c", true],
+  4:  ["5V", "not used", "5v", false],
+  5:  ["GPIO 3", "LCD SCL", "i2c", true],
+  6:  ["GND", "LCD GND", "gnd", true],
+  7:  ["GPIO 4", "Row 0", "row", true],
+  8:  ["GPIO 14", "Col 7", "col", true],
+  9:  ["GND", "not used", "gnd", false],
+  10: ["GPIO 15", "Col 8", "col", true],
+  11: ["GPIO 17", "Row 1", "row", true],
+  12: ["GPIO 18", "Col 9", "col", true],
+  13: ["GPIO 27", "Row 2", "row", true],
+  14: ["GND", "not used", "gnd", false],
+  15: ["GPIO 22", "Row 3", "row", true],
+  16: ["GPIO 23", "Col 10", "col", true],
+  17: ["3V3", "not used", "3v3", false],
+  18: ["GPIO 24", "Col 11", "col", true],
+  19: ["GPIO 10", "Row 4", "row", true],
+  20: ["GND", "not used", "gnd", false],
+  21: ["GPIO 9", "Col 0", "col", true],
+  22: ["GPIO 25", "Row 5", "row", true],
+  23: ["GPIO 11", "Col 1", "col", true],
+  24: ["GPIO 8", "spare", "spare", true],
+  25: ["GND", "not used", "gnd", false],
+  26: ["GPIO 7", "Col 13", "col", true],
+  27: ["ID_SD", "do not use", null, false],
+  28: ["ID_SC", "do not use", null, false],
+  29: ["GPIO 5", "Col 2", "col", true],
+  30: ["GND", "not used", "gnd", false],
+  31: ["GPIO 6", "Col 3", "col", true],
+  32: ["GPIO 12", "Col 12", "col", true],
+  33: ["GPIO 13", "Col 4", "col", true],
+  34: ["GND", "Encoder SW (2nd leg)", "enc", true],
+  35: ["GPIO 19", "Col 5", "col", true],
+  36: ["GPIO 16", "Encoder SW", "enc", true],
+  37: ["GPIO 26", "Col 6", "col", true],
+  38: ["GPIO 20", "Encoder A", "enc", true],
+  39: ["GND", "Encoder C (middle)", "enc", true],
+  40: ["GPIO 21", "Encoder B", "enc", true],
+};
+// GND pins used by a part keep a ground-coloured pad but belong to that part's highlight group.
+const GND_PAD = new Set([6, 34, 39]);
+
+const pinsEl = document.getElementById("pins");
+const els = []; // {group, nodes}
+function pinNode(n) {
+  const [label, role, group, used] = P[n];
+  const d = document.createElement("div");
+  const isGndPad = label === "GND";
+  const color = isGndPad ? "var(--c-gnd)" : (group ? GROUPS[group].color : "var(--c-res)");
+  d.className = "pin" + (n === 1 ? " sq" : "") + (!used ? " unused" : "") + (group === "spare" ? " spare" : "") + (isGndPad && used ? " gndpin" : "");
+  d.style.setProperty("--g", color);
+  d.textContent = n;
+  d.title = `Pin ${n} · ${label} · ${role}`;
+  return d;
+}
+function lblNode(n, side) {
+  const [label, role, group, used] = P[n];
+  const d = document.createElement("div");
+  d.className = "lbl " + side + (used ? "" : " unused");
+  d.innerHTML = side === "l" ? `<span>${role}</span> <b>${label}</b>` : `<b>${label}</b> <span>${role}</span>`;
+  return d;
+}
+for (let odd = 1; odd < 40; odd += 2) {
+  const even = odd + 1;
+  const a = lblNode(odd, "l"), pa = pinNode(odd), pb = pinNode(even), b = lblNode(even, "r");
+  pinsEl.append(a, pa, pb, b);
+  els.push({ g: P[odd][2], used: P[odd][3], nodes: [a, pa] }, { g: P[even][2], used: P[even][3], nodes: [pb, b] });
+}
+
+// Legend + highlight
+const legend = document.getElementById("legend");
+const board = document.getElementById("board");
+let active = null;
+for (const [key, g] of Object.entries(GROUPS)) {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "chip"; b.id = "chip-" + key; b.setAttribute("aria-pressed", "false");
+  b.innerHTML = `<span class="dot${g.hollow ? " hollow" : ""}" style="--g:${g.color}"></span>${g.name}`;
+  b.addEventListener("click", () => setActive(active === key ? null : key));
+  legend.append(b);
+}
+function setActive(key) {
+  active = key;
+  board.classList.toggle("dim", !!key);
+  for (const e of els) {
+    const on = !!key && e.g === key && (e.used || key === "gnd" || key === "3v3" || key === "5v");
+    e.nodes.forEach(n => n.classList.toggle("on", on));
+  }
+  legend.querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", String(c.id === "chip-" + key)));
+}
+
+// Part tables
+const PARTS = [
+  { title: "Matrix rows", group: "row",
+    head: ["Row", "GPIO", "Pin"],
+    rows: [["R0", 4, 7], ["R1", 17, 11], ["R2", 27, 13], ["R3", 22, 15], ["R4", 10, 19], ["R5", 25, 22]],
+    note: "R0 is the top row (bank key at R0·C0). R5 is the bottom row with BG prev / next / stop at C0–C2." },
+  { title: "Matrix columns", group: "col",
+    head: ["Col", "GPIO", "Pin"],
+    rows: [["C0", 9, 21], ["C1", 11, 23], ["C2", 5, 29], ["C3", 6, 31], ["C4", 13, 33], ["C5", 19, 35], ["C6", 26, 37],
+           ["C7", 14, 8], ["C8", 15, 10], ["C9", 18, 12], ["C10", 23, 16], ["C11", 24, 18], ["C12", 12, 32], ["C13", 7, 26]],
+    note: "Columns are not in pin order on the header, so label each wire as you go." },
+  { title: "LCD 1602A · PCF8574 backpack", group: "i2c",
+    head: ["Backpack", "Goes to", "Pin"],
+    rows: [["VCC", "5 V", 2], ["GND", "GND", 6], ["SDA", "GPIO 2", 3], ["SCL", "GPIO 3", 5]],
+    note: "Adjust contrast with the blue trimmer on the backpack if the screen looks blank." },
+  { title: "EC11 encoder", group: "enc",
+    head: ["Encoder", "Goes to", "Pin"],
+    rows: [["A (left)", "GPIO 20", 38], ["C (middle)", "GND", 39], ["B (right)", "GPIO 21", 40], ["SW leg 1", "GPIO 16", 36], ["SW leg 2", "GND", 34]],
+    note: "No resistors needed: the code turns on the Pi's internal pull-ups for A, B and SW." },
+];
+const parts = document.getElementById("parts");
+for (const p of PARTS) {
+  const c = document.createElement("div");
+  c.className = "card";
+  const head = p.head.map(h => `<th>${h}</th>`).join("");
+  const body = p.rows.map(r => `<tr><td>${r[0]}</td><td class="mono">${r[1]}</td><td class="mono phys">${r[2]}</td></tr>`).join("");
+  c.innerHTML = `<h3><span class="dot" style="--g:${GROUPS[p.group].color}"></span>${p.title}</h3>
+    <div class="tbl-wrap"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>
+    <p class="note">${p.note}</p>`;
+  parts.append(c);
+}
+</script>

@@ -13,6 +13,7 @@
 Раскладка звуков — в keymap.py.
 Запуск:   uv run soundboard.py
 Раскладка: uv run soundboard.py --map   (печатает и выходит, работает и без железа)
+Звуковые устройства: uv run soundboard.py --audio-devices
 """
 
 import sys
@@ -50,7 +51,14 @@ SPECIAL_KEYS = {KEY_BANK, KEY_BG_PREV, KEY_BG_NEXT, KEY_BG_STOP}
 VOLUME_STEP = 0.05
 START_VOLUME = 0.7
 MIXER_CHANNELS = 32       # сколько эффектов может звучать одновременно
-AUDIO_BUFFER = 512        # если звук трещит — поставьте 1024
+AUDIO_BUFFER = 1024       # 512 на Pi 3 даёт щелчки/треск (недогрузка буфера). Трещит — ставьте 2048
+# Запас по громкости: эффекты и музыка складываются, и без запаса сумма
+# упирается в 0 dB и хрипит (клиппинг). Громкость энкодера умножается на эти коэффициенты.
+SFX_GAIN = 0.8
+MUSIC_GAIN = 0.55
+# Звуковое устройство. None — системное по умолчанию (на Pi 3 это 3.5 мм джек).
+# Для USB-звуковой карты впишите её имя из `uv run soundboard.py --audio-devices`.
+AUDIO_DEVICE = None
 TEMP_MSG_SECONDS = 1.5    # сколько держится временное сообщение на экране
 RETRIGGER_GUARD = 0.06    # защита от дребезга: повторное срабатывание клавиши не раньше, сек
 SCAN_SETTLE = 0.002       # пауза между столбцами при сканировании
@@ -108,6 +116,15 @@ if "--map" in sys.argv:
     sys.exit(0)
 
 import pygame  # noqa: E402
+
+if "--audio-devices" in sys.argv:
+    from pygame._sdl2 import audio as sdl2_audio
+    pygame.mixer.init()
+    print("Устройства вывода звука (впишите имя в AUDIO_DEVICE):")
+    for name in sdl2_audio.get_audio_device_names(False):
+        print(f"  {name}")
+    sys.exit(0)
+
 from gpiozero import DigitalOutputDevice, Button, RotaryEncoder  # noqa: E402
 
 try:
@@ -157,8 +174,17 @@ display = Display()
 display.write("System Booting..", "Please wait...")
 
 # --- Звук ------------------------------------------------------------------
-pygame.mixer.pre_init(frequency=44100, size=-16, channels=2, buffer=AUDIO_BUFFER)
-pygame.mixer.init()
+# 44100 Гц совпадает с частотой всех файлов в sounds/ — без пересэмплирования
+pygame.mixer.pre_init(frequency=44100, size=-16, channels=2, buffer=AUDIO_BUFFER,
+                      devicename=AUDIO_DEVICE)
+try:
+    pygame.mixer.init()
+except pygame.error as e:
+    if AUDIO_DEVICE is None:
+        raise
+    print(f"Устройство '{AUDIO_DEVICE}' не открылось ({e}), беру системное по умолчанию")
+    pygame.mixer.quit()
+    pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=AUDIO_BUFFER)
 pygame.mixer.set_num_channels(MIXER_CHANNELS)
 
 
@@ -212,9 +238,9 @@ def show_temp(msg):
 
 def apply_volume():
     v = 0.0 if is_muted else volume
-    pygame.mixer.music.set_volume(v)
+    pygame.mixer.music.set_volume(v * MUSIC_GAIN)
     for s in all_sounds:
-        s.set_volume(v)
+        s.set_volume(v * SFX_GAIN)
 
 
 def render():
