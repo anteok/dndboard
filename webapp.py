@@ -1,114 +1,104 @@
 #!/usr/bin/env python3
-"""Веб-сервис DnD Soundboard: просмотр банков звуков и раскладки.
+"""Веб-сервис DnD Soundboard: банки звуков и редактор раскладки.
 
-Работает отдельным процессом рядом с soundboard.py и не трогает железо:
-читает keymap.py и папку sounds/ с диска. keymap.py перечитывается
-автоматически, когда файл меняется, — перезапуск не нужен.
+Работает отдельным процессом рядом с soundboard.py и не трогает железо.
+Раскладка хранится в SQLite (store.py). Кнопка Save в вебе сохраняет её
+и перезапускает soundboard.py (команда — DNDBOARD_RESTART_CMD,
+по умолчанию `systemctl --user restart dndboard`).
 
 Запуск:   uv run webapp.py                  (порт 80, все интерфейсы)
           uv run webapp.py --port 8080      (например, для проверки на ПК)
 """
 
 import argparse
-import importlib.util
 import os
+import shlex
 import socket
+import subprocess
 import sys
-import threading
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import Body, FastAPI, HTTPException
 from fastapi.responses import FileResponse
 
 BASE_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(BASE_DIR))
 from layout import (  # noqa: E402
-    COLS, ENCODER_FUNCTIONS, KEYMAP_FILE, ROWS, SOUNDS_DIR, SPECIAL_KEY_INFO,
-    key_file, keymap_warnings, pretty_name,
+    AUDIO_EXTS, COLS, ENCODER_FUNCTIONS, FUNCTIONS, ROWS, SOUNDS_DIR,
+    pretty_name, validate_layers,
 )
+import store  # noqa: E402
 
 WEB_DIR = BASE_DIR / "web"
-AUDIO_EXTS = {".ogg", ".wav", ".mp3", ".flac"}
 DEFAULT_PORT = int(os.environ.get("DNDBOARD_WEB_PORT", "80"))
-
-# --- Чтение keymap.py ------------------------------------------------------
-_keymap_lock = threading.Lock()
-_keymap_cache = {"mtime": None, "banks": None, "bg": None}
-
-
-def load_keymap():
-    """Возвращает (BANKS, BG_TRACKS, mtime). Перечитывает файл, только если он изменился."""
-    try:
-        mtime = KEYMAP_FILE.stat().st_mtime
-    except FileNotFoundError:
-        raise HTTPException(500, f"{KEYMAP_FILE.name} not found")
-    with _keymap_lock:
-        if _keymap_cache["mtime"] != mtime:
-            spec = importlib.util.spec_from_file_location("_keymap_live", KEYMAP_FILE)
-            module = importlib.util.module_from_spec(spec)
-            try:
-                spec.loader.exec_module(module)
-            except Exception as e:  # синтаксическая ошибка в процессе редактирования и т.п.
-                raise HTTPException(500, f"Error in {KEYMAP_FILE.name}: {e}")
-            _keymap_cache.update(mtime=mtime, banks=module.BANKS,
-                                 bg=list(getattr(module, "BG_TRACKS", [])))
-        return _keymap_cache["banks"], _keymap_cache["bg"], mtime
+RESTART_CMD = os.environ.get("DNDBOARD_RESTART_CMD", "systemctl --user restart dndboard")
+RESTART_TIMEOUT = 30
 
 
 def sound_exists(rel):
     return (SOUNDS_DIR / rel).is_file()
 
 
-# --- Сборка данных ---------------------------------------------------------
-def build_layout():
-    banks, bg_tracks, mtime = load_keymap()
-    layers = []
-    for b, bank in enumerate(banks):
-        grid = []
-        for r in range(ROWS):
-            row = []
-            for c in range(COLS):
-                cell = {"r": r, "c": c}
-                if (r, c) in SPECIAL_KEY_INFO:
-                    fid, label, descr = SPECIAL_KEY_INFO[(r, c)]
-                    cell.update(type="function", function=fid, label=label, description=descr)
-                else:
-                    f = key_file(banks, b, r, c)
-                    if f:
-                        cell.update(type="sound", file=f, label=pretty_name(f),
-                                    folder=Path(f).parts[0] if len(Path(f).parts) > 1 else "",
-                                    missing=not sound_exists(f))
-                    else:
-                        cell.update(type="empty")
-                row.append(cell)
-            grid.append(row)
-        layers.append({"index": b, "name": bank.get("name", f"Bank {b + 1}"), "keys": grid})
+def folder_of(rel):
+    parts = Path(rel).parts
+    return parts[0] if len(parts) > 1 else ""
 
+
+def load_layout():
+    try:
+        return store.load()
+    except Exception as e:
+        raise HTTPException(500, f"Can't read layout database {store.DB_PATH}: {e}")
+
+
+# --- Сборка данных ---------------------------------------------------------
+def describe_cell(cell, r, c):
+    out = {"r": r, "c": c}
+    if not cell:
+        out["type"] = "empty"
+    elif cell["type"] == "function":
+        label, descr = FUNCTIONS.get(cell["function"], (cell["function"], "Unknown function"))
+        out.update(type="function", function=cell["function"], label=label, description=descr)
+    else:
+        f = cell["file"]
+        out.update(type="sound", file=f, label=pretty_name(f), folder=folder_of(f),
+                   missing=not sound_exists(f))
+    return out
+
+
+def build_layout():
+    data = load_layout()
+    layers = [{
+        "index": b,
+        "name": layer["name"],
+        "keys": [[describe_cell(layer["keys"][r][c], r, c) for c in range(COLS)] for r in range(ROWS)],
+    } for b, layer in enumerate(data["layers"])]
     return {
         "rows": ROWS,
         "cols": COLS,
+        "revision": data["revision"],
+        "updated_at": data["updated_at"],
         "layers": layers,
+        "functions": [{"id": k, "label": v[0], "description": v[1]} for k, v in FUNCTIONS.items()],
         "bg_tracks": [{"file": t, "label": pretty_name(t), "missing": not sound_exists(t)}
-                      for t in bg_tracks],
+                      for t in data["bg_tracks"]],
         "encoder": [{"action": a, "description": d} for a, d in ENCODER_FUNCTIONS],
-        "warnings": keymap_warnings(banks),
-        "keymap_mtime": mtime,
     }
 
 
 def build_sounds():
     """Банки звуков на устройстве = подпапки sounds/. Для каждого файла — где он используется."""
-    banks, bg_tracks, _ = load_keymap()
+    data = load_layout()
     usage = {}
-    for b, bank in enumerate(banks):
+    for b, layer in enumerate(data["layers"]):
         for r in range(ROWS):
             for c in range(COLS):
-                f = key_file(banks, b, r, c)
-                if f:
-                    usage.setdefault(f, []).append(
-                        {"layer": b, "layer_name": bank.get("name", f"Bank {b + 1}"), "r": r, "c": c})
-    bg_set = set(bg_tracks)
+                cell = layer["keys"][r][c]
+                if cell and cell["type"] == "sound":
+                    usage.setdefault(cell["file"], []).append(
+                        {"layer": b, "layer_name": layer["name"], "r": r, "c": c})
+    bg_set = set(data["bg_tracks"])
 
     folders = []
     if SOUNDS_DIR.is_dir():
@@ -116,8 +106,7 @@ def build_sounds():
         for p in sorted(SOUNDS_DIR.rglob("*")):
             if p.is_file() and p.suffix.lower() in AUDIO_EXTS:
                 rel = p.relative_to(SOUNDS_DIR).as_posix()
-                folder = rel.split("/")[0] if "/" in rel else ""
-                groups.setdefault(folder, []).append({
+                groups.setdefault(folder_of(rel), []).append({
                     "file": rel,
                     "label": pretty_name(rel),
                     "size": p.stat().st_size,
@@ -133,11 +122,29 @@ def build_sounds():
             })
 
     return {
+        "revision": data["revision"],
         "sounds_dir": str(SOUNDS_DIR),
         "found": SOUNDS_DIR.is_dir(),
         "banks": folders,
         "total_tracks": sum(len(f["tracks"]) for f in folders),
     }
+
+
+def restart_soundboard():
+    """Перезапускает сервис клавиатуры. Возвращает {"ok", "message"}."""
+    if not RESTART_CMD.strip():
+        return {"ok": False, "message": "Restart is disabled (DNDBOARD_RESTART_CMD is empty)"}
+    try:
+        res = subprocess.run(shlex.split(RESTART_CMD), capture_output=True, text=True,
+                             timeout=RESTART_TIMEOUT)
+    except FileNotFoundError:
+        return {"ok": False, "message": f"Command not found: {RESTART_CMD}"}
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "message": f"Restart took longer than {RESTART_TIMEOUT} s"}
+    if res.returncode != 0:
+        err = (res.stderr or res.stdout).strip() or f"exit code {res.returncode}"
+        return {"ok": False, "message": f"Restart failed: {err}"}
+    return {"ok": True, "message": "Soundboard restarted"}
 
 
 # --- HTTP ------------------------------------------------------------------
@@ -147,6 +154,26 @@ app = FastAPI(title="DnD Soundboard", docs_url="/api/docs", redoc_url=None)
 @app.get("/api/layout")
 def api_layout():
     return build_layout()
+
+
+@app.put("/api/layout")
+def api_save_layout(body: dict = Body(...)):
+    """Сохраняет раскладку целиком и перезапускает soundboard.py.
+
+    Тело: {"revision": <из GET>, "layers": [{"name": ..., "keys": 6x14 ячеек}]}.
+    Ячейка: {"type": "empty"} | {"type": "sound", "file": ...} | {"type": "function", "function": ...}.
+    Лишние поля (label, missing, ...) из GET игнорируются.
+    """
+    layers, errors, warnings = validate_layers(body.get("layers"))
+    if errors:
+        raise HTTPException(422, {"errors": errors, "warnings": warnings})
+    try:
+        revision = store.save_layers(layers, body.get("revision"))
+    except store.ConflictError as e:
+        raise HTTPException(409, {"errors": [
+            f"The layout was changed elsewhere (now revision {e.args[0]}). "
+            "Reload the page to see it; your changes are not saved."]})
+    return {"revision": revision, "warnings": warnings, "restart": restart_soundboard()}
 
 
 @app.get("/api/sounds")

@@ -4,3 +4,5 @@ __pycache__/
 
 ./sounds/*
 uv.lock
+dndboard.db
+dndboard.db-journal

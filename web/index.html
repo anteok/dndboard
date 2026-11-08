@@ -15,6 +15,7 @@
     --accent: #d8a24a;
     --accent-ink: #1b1508;
     --danger: #e0644f;
+    --ok: #7bbf6a;
     --key-empty: #1a1814;
     --radius: 8px;
   }
@@ -22,7 +23,7 @@
     :root:not([data-theme="dark"]) {
       --bg: #f4efe4; --panel: #fffaf0; --panel-2: #f1e8d6; --line: #d9ccb2;
       --text: #2a2418; --muted: #7a6d55; --accent: #a8701a; --accent-ink: #fff8ea;
-      --danger: #b8402c; --key-empty: #ece4d2;
+      --danger: #b8402c; --ok: #3f7d32; --key-empty: #ece4d2;
     }
   }
   * { box-sizing: border-box; }
@@ -30,6 +31,7 @@
     margin: 0; background: var(--bg); color: var(--text);
     font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   }
+  button { font: inherit; color: inherit; }
   header {
     display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
     padding: 18px 20px 10px; border-bottom: 1px solid var(--line);
@@ -44,23 +46,33 @@
   header nav a[aria-current="page"] { color: var(--text); background: var(--panel-2); }
   [hidden] { display: none !important; }
   header .status { margin-left: auto; color: var(--muted); font-size: 12px; }
-  main { padding: 16px 20px 40px; max-width: 1400px; margin: 0 auto; }
+  main { padding: 16px 20px 96px; max-width: 1400px; margin: 0 auto; }
   h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 28px 0 10px; }
-  .error, .warn {
-    padding: 10px 12px; border-radius: var(--radius); margin: 10px 0;
-    border: 1px solid var(--danger); color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent);
+  .hint { color: var(--muted); margin: -4px 0 12px; font-size: 12px; }
+  .msg { padding: 10px 12px; border-radius: var(--radius); margin: 10px 0; border: 1px solid; }
+  .msg ul { margin: 4px 0 0; padding-left: 18px; }
+  .msg.error { border-color: var(--danger); color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
+  .msg.warn { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+  .msg.ok { border-color: var(--ok); color: var(--ok); background: color-mix(in srgb, var(--ok) 10%, transparent); }
+
+  .btn {
+    border: 1px solid var(--line); background: var(--panel-2); padding: 7px 14px; border-radius: 8px; cursor: pointer;
   }
-  .warn { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+  .btn:hover:not(:disabled) { border-color: var(--muted); }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+  .btn.small { padding: 4px 10px; font-size: 12px; }
 
   /* Layer tabs */
   .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
   .tab {
     border: 1px solid var(--line); background: var(--panel); color: var(--text);
-    padding: 7px 14px; border-radius: 999px; cursor: pointer; font: inherit;
+    padding: 7px 14px; border-radius: 999px; cursor: pointer;
   }
   .tab small { color: var(--muted); margin-left: 6px; }
+  .tab .bad { color: var(--danger); margin-left: 6px; font-weight: 700; }
   .tab[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
-  .tab[aria-selected="true"] small { color: inherit; opacity: .7; }
+  .tab[aria-selected="true"] small, .tab[aria-selected="true"] .bad { color: inherit; opacity: .8; }
 
   /* Key grid */
   .board {
@@ -74,10 +86,12 @@
   .axis { color: var(--muted); font-size: 11px; text-align: center; align-self: center; font-variant-numeric: tabular-nums; }
   .key {
     position: relative; min-height: 62px; padding: 6px 7px 6px 9px; border-radius: 6px;
-    background: var(--panel-2); border: 1px solid var(--line);
+    background: var(--panel-2); border: 1px solid var(--line); text-align: left; cursor: pointer;
     display: flex; flex-direction: column; justify-content: space-between; overflow: hidden;
-    transition: opacity .12s, outline-color .12s;
+    transition: border-color .12s;
   }
+  .key:hover { border-color: var(--muted); }
+  .key:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .key::before {      /* folder colour stripe */
     content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--hue, transparent);
   }
@@ -90,6 +104,11 @@
   .key.function::before { display: none; }
   .key.missing { border-color: var(--danger); }
   .key.missing .meta .tag { color: var(--danger); font-weight: 700; }
+  .key.changed::after {    /* unsaved marker */
+    content: ""; position: absolute; top: 5px; right: 5px; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--danger); box-shadow: 0 0 0 2px var(--panel-2);
+  }
+  .key.function.changed::after { box-shadow: 0 0 0 2px var(--accent); }
   .key.focus { outline: 3px solid var(--accent); outline-offset: 2px; animation: pulse 1s ease-in-out 3; }
   @keyframes pulse { 50% { outline-offset: 5px; } }
 
@@ -102,6 +121,53 @@
   .card dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; }
   .card dt { font-weight: 600; } .card dd { margin: 0; color: var(--muted); }
   .missing-txt { color: var(--danger); font-weight: 600; font-size: 12px; }
+
+  /* Unsaved changes bar */
+  .savebar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
+    background: color-mix(in srgb, var(--panel) 92%, transparent); backdrop-filter: blur(6px);
+    border-top: 1px solid var(--line);
+  }
+  .savebar .inner { max-width: 1400px; margin: 0 auto; padding: 10px 20px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .savebar .count { font-weight: 600; }
+  .savebar .count.none { color: var(--muted); font-weight: 400; }
+  .savebar .spacer { flex: 1; }
+
+  /* Key editor dialog */
+  dialog {
+    width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 0;
+    background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 14px;
+  }
+  dialog::backdrop { background: rgb(0 0 0 / .55); }
+  .dlg { display: flex; flex-direction: column; max-height: calc(100vh - 50px); }
+  .dlg-head { padding: 14px 16px 10px; border-bottom: 1px solid var(--line); }
+  .dlg-head h3 { margin: 0; font-size: 16px; }
+  .dlg-head .now { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .seg { display: flex; gap: 4px; margin-top: 10px; background: var(--panel-2); padding: 3px; border-radius: 9px; }
+  .seg button { flex: 1; border: 0; background: none; padding: 6px; border-radius: 7px; cursor: pointer; color: var(--muted); font-weight: 600; }
+  .seg button[aria-pressed="true"] { background: var(--panel); color: var(--text); box-shadow: 0 1px 2px rgb(0 0 0 / .25); }
+  .dlg-body { padding: 12px 16px; overflow-y: auto; flex: 1; min-height: 200px; }
+  .dlg-foot { padding: 10px 16px; border-top: 1px solid var(--line); display: flex; gap: 8px; align-items: center; }
+  .dlg-foot .spacer { flex: 1; }
+  .filters { display: flex; gap: 6px; margin-bottom: 8px; position: sticky; top: -12px; background: var(--panel); padding: 4px 0; }
+  .filters input, .filters select {
+    font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 8px; padding: 7px 10px; min-width: 0;
+  }
+  .filters input { flex: 1; }
+  .opt-list { display: flex; flex-direction: column; gap: 2px; }
+  .opt {
+    display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; cursor: pointer;
+    border: 1px solid transparent; background: none; padding: 6px 8px; border-radius: 7px;
+  }
+  .opt:hover, .opt:focus-visible { background: var(--panel-2); outline: none; }
+  .opt[aria-current="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .opt .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--hue); flex: none; }
+  .opt .sub { margin-left: auto; color: var(--muted); font-size: 11px; white-space: nowrap; }
+  .opt .desc { display: block; color: var(--muted); font-size: 12px; font-weight: 400; }
+  .group-title { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 10px 8px 4px; }
+  .check { display: flex; gap: 8px; align-items: center; margin-top: 12px; color: var(--muted); }
+  .empty-pane { color: var(--muted); }
 
   /* Sound banks */
   .banks { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; align-items: start; }
@@ -123,6 +189,7 @@
   .pill { font-size: 10px; padding: 1px 6px; border-radius: 999px; background: var(--panel-2); color: var(--muted); border: 1px solid var(--line); }
   @media (max-width: 600px) {
     header, main { padding-left: 16px; padding-right: 16px; }
+    .savebar .inner { padding: 10px 16px; }
   }
 </style>
 </head>
@@ -137,6 +204,8 @@
 
   <section id="page-layout">
   <h2>Layers</h2>
+  <p class="hint">Click a key to change it. Changes are kept in this browser until you press Save.</p>
+  <div id="save-result"></div>
   <div class="tabs" id="tabs" role="tablist"></div>
   <div class="board"><div class="grid" id="grid"></div></div>
 
@@ -145,86 +214,187 @@
     <div class="card"><h3>Encoder</h3><dl id="encoder"></dl></div>
     <div class="card"><h3>Background tracks <small class="pill">BG prev / next</small></h3><ol id="bg"></ol></div>
   </div>
-
   </section>
 
   <section id="page-sounds" hidden>
   <h2>Sound banks on device <span id="banks-total" class="pill"></span></h2>
-  <p style="color:var(--muted);margin:-4px 0 12px;font-size:12px">Open a bank to see its tracks. Click a key position (layer:[row][col]) to show it on the layout.</p>
+  <p class="hint">Open a bank to see its tracks. Click a key position (layer:[row][col]) to show it on the layout. Shows the saved layout.</p>
   <div class="banks" id="banks"></div>
   </section>
 </main>
 
+<div class="savebar" id="savebar">
+  <div class="inner">
+    <span class="count none" id="dirty-count">No unsaved changes</span>
+    <span class="spacer"></span>
+    <button class="btn" id="discard" disabled>Discard</button>
+    <button class="btn primary" id="save" disabled>Save &amp; restart soundboard</button>
+  </div>
+</div>
+
+<dialog id="editor">
+  <form method="dialog" class="dlg" id="editor-form">
+    <div class="dlg-head">
+      <h3 id="ed-title">Key</h3>
+      <div class="now" id="ed-now"></div>
+      <div class="seg" role="group" aria-label="Key type">
+        <button type="button" data-mode="sound">Sound</button>
+        <button type="button" data-mode="function">Function</button>
+        <button type="button" data-mode="empty">Empty</button>
+      </div>
+    </div>
+    <div class="dlg-body" id="ed-body"></div>
+    <div class="dlg-foot">
+      <button type="button" class="btn small" id="ed-revert">Revert key</button>
+      <span class="spacer"></span>
+      <button class="btn" value="close">Close</button>
+    </div>
+  </form>
+</dialog>
+
 <script>
-const state = { layout: null, sounds: null, layer: 0, mtime: null };
+const DRAFT_KEY = "dndboard.draft";
+const state = {
+  layout: null,     // saved layout from the server (GET /api/layout)
+  sounds: null,     // GET /api/sounds
+  draft: null,      // editable copy: layers[].keys[r][c] = null | {type:"sound",file} | {type:"function",function}
+  revision: null,
+  layer: 0,
+  remoteRevision: null,
+  saving: false,
+};
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const hue = (name) => { let h = 0; for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 360; return `hsl(${h} 55% 55%)`; };
 const kb = (n) => n > 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.round(n / 1024) + " KB";
+const store = {
+  get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } },
+  set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+};
+// same as pretty_name() in layout.py
+function prettyName(path) {
+  let parts = path.split("/").pop().replace(/\.[^.]+$/, "").split("_");
+  if (parts.length > 1 && /^\d+$/.test(parts[0])) parts = parts.slice(1);
+  return parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(" ");
+}
+const folderOf = (f) => f.includes("/") ? f.split("/")[0] : "";
+const fnInfo = (id) => state.layout.functions.find((f) => f.id === id) || { id, label: id, description: "Unknown function" };
 
-try { const l = Number(localStorage.getItem("dndboard.layer")); if (l >= 0) state.layer = l; } catch (e) {}
+if (Number(store.get("dndboard.layer")) >= 0) state.layer = Number(store.get("dndboard.layer"));
 
-async function getJSON(url) {
-  const r = await fetch(url, { cache: "no-store" });
+async function api(url, opts) {
+  const r = await fetch(url, { cache: "no-store", ...opts });
   const body = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(body.detail || `${url}: HTTP ${r.status}`);
+  if (!r.ok) {
+    const d = body.detail;
+    const err = new Error(typeof d === "string" ? d : (d && d.errors ? d.errors.join("\n") : `${url}: HTTP ${r.status}`));
+    err.status = r.status; err.detail = d;
+    throw err;
+  }
   return body;
 }
 
+// ---- draft --------------------------------------------------------------
+function cellFromServer(k) {
+  if (k.type === "sound") return { type: "sound", file: k.file };
+  if (k.type === "function") return { type: "function", function: k.function };
+  return null;
+}
+function savedCell(li, r, c) { return cellFromServer(state.layout.layers[li].keys[r][c]); }
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+function freshDraft() {
+  return state.layout.layers.map((l) => ({ name: l.name, keys: l.keys.map((row) => row.map(cellFromServer)) }));
+}
+function changes() {
+  const out = [];
+  state.draft.forEach((l, li) => l.keys.forEach((row, r) => row.forEach((cell, c) => {
+    if (!same(cell, savedCell(li, r, c))) out.push([li, r, c]);
+  })));
+  return out;
+}
+function persistDraft() {
+  store.set(DRAFT_KEY, changes().length ? { revision: state.revision, draft: state.draft } : null);
+}
+function hasBankKey(layer) {
+  return layer.keys.some((row) => row.some((c) => c && c.type === "function" && c.function === "bank_next"));
+}
+
+// ---- rendering ----------------------------------------------------------
 function renderTabs() {
-  const { layers } = state.layout;
+  const layers = state.draft;
   if (state.layer >= layers.length) state.layer = 0;
   $("tabs").innerHTML = layers.map((l, i) => {
-    const n = l.keys.flat().filter((k) => k.type === "sound").length;
-    return `<button class="tab" role="tab" aria-selected="${i === state.layer}" data-i="${i}">${i + 1}. ${esc(l.name)}<small>${n}</small></button>`;
+    const n = l.keys.flat().filter((k) => k && k.type === "sound").length;
+    const bad = layers.length > 1 && !hasBankKey(l)
+      ? `<span class="bad" title="No 'Next bank' key: you could not leave this layer">!</span>` : "";
+    return `<button class="tab" role="tab" aria-selected="${i === state.layer}" data-i="${i}">${i + 1}. ${esc(l.name)}<small>${n}</small>${bad}</button>`;
   }).join("");
   $("tabs").querySelectorAll(".tab").forEach((b) => b.onclick = () => {
     state.layer = Number(b.dataset.i);
-    try { localStorage.setItem("dndboard.layer", state.layer); } catch (e) {}
+    store.set("dndboard.layer", state.layer);
     renderTabs(); renderGrid();
   });
 }
 
+function keyHTML(cell, r, c, changed) {
+  const pos = `[${r}][${c}]`;
+  const ch = changed ? " changed" : "";
+  const attrs = `data-pos="${r}-${c}" data-r="${r}" data-c="${c}"`;
+  if (cell && cell.type === "function") {
+    const f = fnInfo(cell.function);
+    return `<button class="key function${ch}" ${attrs} title="${pos} ${esc(f.description)}${changed ? " (unsaved)" : ""}"><span class="name">${esc(f.label)}</span><span class="meta"><span>function</span></span></button>`;
+  }
+  if (cell && cell.type === "sound") {
+    const folder = folderOf(cell.file);
+    const missing = state.sounds && !state.sounds.files.has(cell.file);
+    return `<button class="key sound${missing ? " missing" : ""}${ch}" ${attrs} data-file="${esc(cell.file)}" style="--hue:${hue(folder)}" title="${pos} ${esc(cell.file)}${missing ? " — FILE NOT FOUND" : ""}${changed ? " (unsaved)" : ""}">
+      <span class="name">${esc(prettyName(cell.file))}</span>
+      <span class="meta"><span class="tag">${missing ? "missing file" : esc(folder)}</span></span></button>`;
+  }
+  return `<button class="key empty${ch}" ${attrs} title="${pos} empty${changed ? " (unsaved)" : ""}"><span class="name">—</span></button>`;
+}
+
 function renderGrid() {
-  const { rows, cols, layers } = state.layout;
-  const layer = layers[state.layer];
+  const { rows, cols } = state.layout;
+  const li = state.layer;
+  const layer = state.draft[li];
   const g = $("grid");
   g.style.setProperty("--cols", cols);
   let html = `<div></div>`;
   for (let c = 0; c < cols; c++) html += `<div class="axis">${c}</div>`;
   for (let r = 0; r < rows; r++) {
     html += `<div class="axis">${r}</div>`;
-    for (const k of layer.keys[r]) {
-      const pos = `[${k.r}][${k.c}]`;
-      if (k.type === "function") {
-        html += `<div class="key function" data-pos="${k.r}-${k.c}" title="${pos} ${esc(k.description)}"><div class="name">${esc(k.label)}</div><div class="meta"><span>function</span></div></div>`;
-      } else if (k.type === "sound") {
-        html += `<div class="key sound${k.missing ? " missing" : ""}" data-pos="${k.r}-${k.c}" data-file="${esc(k.file)}" data-folder="${esc(k.folder)}" style="--hue:${hue(k.folder)}" title="${pos} ${esc(k.file)}${k.missing ? " — FILE NOT FOUND" : ""}">
-          <div class="name">${esc(k.label)}</div>
-          <div class="meta"><span class="tag">${k.missing ? "missing file" : esc(k.folder)}</span></div></div>`;
-      } else {
-        html += `<div class="key empty" data-pos="${k.r}-${k.c}" title="${pos} empty"><div class="name">—</div></div>`;
-      }
-    }
+    for (let c = 0; c < cols; c++) html += keyHTML(layer.keys[r][c], r, c, !same(layer.keys[r][c], savedCell(li, r, c)));
   }
   g.innerHTML = html;
 }
+$("grid").addEventListener("click", (e) => {
+  const k = e.target.closest(".key");
+  if (k) openEditor(Number(k.dataset.r), Number(k.dataset.c));
+});
 
 function renderInfo() {
   const L = state.layout;
-  const fn = L.layers[0] ? L.layers[0].keys.flat().filter((k) => k.type === "function") : [];
-  $("functions").innerHTML = fn.map((k) => `<dt>[${k.r}][${k.c}] ${esc(k.label)}</dt><dd>${esc(k.description)}</dd>`).join("");
+  $("functions").innerHTML = L.functions.map((f) => `<dt>${esc(f.label)}</dt><dd>${esc(f.description)}</dd>`).join("");
   $("encoder").innerHTML = L.encoder.map((e) => `<dt>${esc(e.action)}</dt><dd>${esc(e.description)}</dd>`).join("");
   $("bg").innerHTML = L.bg_tracks.map((t) =>
     `<li title="${esc(t.file)}">${esc(t.label)}${t.missing ? ' <span class="missing-txt">missing</span>' : ""}</li>`).join("") || "<li>none</li>";
-  $("errors").innerHTML = L.warnings.map((w) => `<div class="warn">${esc(w)}</div>`).join("");
+}
+
+function renderSaveBar() {
+  const n = changes().length;
+  $("dirty-count").textContent = n ? `${n} unsaved change${n > 1 ? "s" : ""}` : "No unsaved changes";
+  $("dirty-count").classList.toggle("none", !n);
+  $("discard").disabled = !n || state.saving;
+  $("save").disabled = !n || state.saving;
+  $("save").textContent = state.saving ? "Saving…" : "Save & restart soundboard";
 }
 
 function renderBanks() {
   const S = state.sounds;
   const openBanks = new Set([...document.querySelectorAll(".bank[open]")].map((d) => d.dataset.folder));
   $("banks-total").textContent = `${S.banks.length} banks · ${S.total_tracks} tracks`;
-  if (!S.found) { $("banks").innerHTML = `<div class="error">Sounds folder not found: ${esc(S.sounds_dir)}</div>`; return; }
+  if (!S.found) { $("banks").innerHTML = `<div class="msg error">Sounds folder not found: ${esc(S.sounds_dir)}</div>`; return; }
   $("banks").innerHTML = S.banks.map((b) => `
     <details class="bank" data-folder="${esc(b.name)}" style="--hue:${hue(b.name)}"${openBanks.has(b.name) ? " open" : ""}>
       <summary><span class="title">${esc(b.name)}</span>
@@ -233,24 +403,178 @@ function renderBanks() {
         const where = t.used_on.map((u) =>
           `<a href="#layout/${u.layer + 1}/${u.r}/${u.c}" title="${esc(u.layer_name)}">${u.layer + 1}:[${u.r}][${u.c}]</a>`).join("");
         const used = t.used_on.length || t.background;
-        return `<li class="${used ? "" : "unused"}" data-file="${esc(t.file)}" title="${esc(t.file)} · ${kb(t.size)}">
+        return `<li class="${used ? "" : "unused"}" title="${esc(t.file)} · ${kb(t.size)}">
           <span>${esc(t.label)}</span>${t.background ? '<span class="pill">BG</span>' : ""}
           <span class="where">${where || (t.background ? "" : "unassigned")}</span></li>`;
       }).join("")}</ul>
     </details>`).join("");
 }
 
-// Routing: #layout, #sounds, #layout/<layer>/<row>/<col> (jump to a key)
+function renderAll() { renderTabs(); renderGrid(); renderInfo(); renderSaveBar(); renderBanks(); }
+
+function showResult(kind, title, items) {
+  $("save-result").innerHTML = `<div class="msg ${kind}"><strong>${esc(title)}</strong>${
+    items && items.length ? `<ul>${items.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>` : ""}</div>`;
+}
+
+// ---- key editor ---------------------------------------------------------
+const ed = { r: 0, c: 0, mode: "sound", query: "", folder: "" };
+
+function describe(cell) {
+  if (!cell) return "Empty";
+  if (cell.type === "function") return `Function: ${fnInfo(cell.function).label}`;
+  return `Sound: ${prettyName(cell.file)} (${cell.file})`;
+}
+
+function openEditor(r, c) {
+  Object.assign(ed, { r, c });
+  const cell = state.draft[state.layer].keys[r][c];
+  ed.mode = cell ? cell.type : "sound";
+  ed.folder = cell && cell.type === "sound" ? folderOf(cell.file) : "";   // start in the current sound's bank
+  ed.query = "";
+  renderEditor();
+  $("editor").showModal();
+  if (ed.mode === "sound") $("ed-search").focus();
+}
+
+function usageOf(file) {
+  const out = [];
+  state.draft.forEach((l, li) => l.keys.forEach((row, r) => row.forEach((cell, c) => {
+    if (cell && cell.type === "sound" && cell.file === file) out.push(`${li + 1}:[${r}][${c}]`);
+  })));
+  return out;
+}
+
+function renderEditor() {
+  const li = state.layer, { r, c } = ed;
+  const cell = state.draft[li].keys[r][c];
+  const saved = savedCell(li, r, c);
+  $("ed-title").textContent = `Key [${r}][${c}] · ${li + 1}. ${state.draft[li].name}`;
+  $("ed-now").textContent = describe(cell) + (same(cell, saved) ? "" : `  ·  saved: ${describe(saved)}`);
+  $("ed-revert").disabled = same(cell, saved);
+  document.querySelectorAll(".seg button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.mode === ed.mode));
+  const body = $("ed-body");
+
+  if (ed.mode === "sound") {
+    const folders = state.sounds.banks.map((b) => b.name);
+    body.innerHTML = `
+      <div class="filters">
+        <input id="ed-search" type="search" placeholder="Search sounds…" value="${esc(ed.query)}" autocomplete="off">
+        <select id="ed-folder"><option value="">All banks</option>${folders.map((f) =>
+          `<option value="${esc(f)}"${f === ed.folder ? " selected" : ""}>${esc(f)}</option>`).join("")}</select>
+      </div>
+      <div class="opt-list" id="ed-sounds"></div>`;
+    $("ed-search").oninput = (e) => { ed.query = e.target.value; renderSoundList(); };
+    $("ed-folder").onchange = (e) => { ed.folder = e.target.value; renderSoundList(); };
+    $("ed-search").onkeydown = (e) => {   // Enter picks the first match
+      if (e.key === "Enter") { e.preventDefault(); const first = $("ed-sounds").querySelector(".opt"); if (first) first.click(); }
+    };
+    renderSoundList();
+  } else if (ed.mode === "function") {
+    const cur = cell && cell.type === "function" ? cell.function : null;
+    body.innerHTML = `<div class="opt-list">${state.layout.functions.map((f) => `
+      <button type="button" class="opt" data-fn="${esc(f.id)}" aria-current="${f.id === cur}">
+        <span><strong>${esc(f.label)}</strong><span class="desc">${esc(f.description)}</span></span></button>`).join("")}
+      </div>
+      <label class="check"><input type="checkbox" id="ed-all-layers"> Put it on this key in every layer</label>`;
+    body.querySelectorAll("[data-fn]").forEach((b) => b.onclick = () => {
+      const val = { type: "function", function: b.dataset.fn };
+      if ($("ed-all-layers").checked) state.draft.forEach((l) => { l.keys[r][c] = { ...val }; });
+      else setCell(val);
+      afterEdit(true);
+    });
+  } else {
+    body.innerHTML = `<p class="empty-pane">The key will do nothing on this layer.</p>
+      <button type="button" class="btn" id="ed-clear"${cell ? "" : " disabled"}>Clear key</button>`;
+    $("ed-clear").onclick = () => { setCell(null); afterEdit(true); };
+  }
+}
+
+function renderSoundList() {
+  const cell = state.draft[state.layer].keys[ed.r][ed.c];
+  const cur = cell && cell.type === "sound" ? cell.file : null;
+  const q = ed.query.trim().toLowerCase();
+  let html = "";
+  for (const b of state.sounds.banks) {
+    if (ed.folder && b.name !== ed.folder) continue;
+    const tracks = b.tracks.filter((t) => !q || t.label.toLowerCase().includes(q) || t.file.toLowerCase().includes(q));
+    if (!tracks.length) continue;
+    if (!ed.folder) html += `<div class="group-title">${esc(b.name)}</div>`;
+    html += tracks.map((t) => {
+      const used = usageOf(t.file);
+      return `<button type="button" class="opt" data-file="${esc(t.file)}" aria-current="${t.file === cur}" style="--hue:${hue(b.name)}" title="${esc(t.file)}">
+        <span class="dot"></span><span>${esc(t.label)}</span><span class="sub">${used.length ? "on " + used.join(" ") : ""}</span></button>`;
+    }).join("");
+  }
+  $("ed-sounds").innerHTML = html || `<p class="empty-pane">No sounds match.</p>`;
+  const sel = $("ed-sounds").querySelector('[aria-current="true"]');
+  if (sel && !q) sel.scrollIntoView({ block: "center" });
+  $("ed-sounds").querySelectorAll("[data-file]").forEach((b) => b.onclick = () => {
+    setCell({ type: "sound", file: b.dataset.file });
+    afterEdit(true);
+  });
+}
+
+function setCell(val) { state.draft[state.layer].keys[ed.r][ed.c] = val; }
+function afterEdit(close) {
+  persistDraft();
+  renderTabs(); renderGrid(); renderSaveBar();
+  $("save-result").innerHTML = "";
+  if (close) $("editor").close(); else renderEditor();
+}
+document.querySelectorAll(".seg button").forEach((b) => b.onclick = () => { ed.mode = b.dataset.mode; renderEditor(); });
+$("ed-revert").onclick = () => { setCell(savedCell(state.layer, ed.r, ed.c)); afterEdit(false); };
+$("editor").addEventListener("close", () => {
+  const k = $("grid").querySelector(`.key[data-pos="${ed.r}-${ed.c}"]`);
+  if (k) k.focus({ preventScroll: true });
+});
+
+// ---- save / discard -----------------------------------------------------
+$("discard").onclick = () => {
+  const n = changes().length;
+  if (n && !confirm(`Discard ${n} unsaved change${n > 1 ? "s" : ""}?`)) return;
+  $("save-result").innerHTML = "";
+  if (state.remoteRevision !== state.revision) { store.set(DRAFT_KEY, null); load(true); return; }  // take the newer layout
+  state.draft = freshDraft(); persistDraft();
+  renderTabs(); renderGrid(); renderSaveBar();
+};
+
+$("save").onclick = async () => {
+  state.saving = true; renderSaveBar();
+  try {
+    const res = await api("/api/layout", {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ revision: state.revision, layers: state.draft }),
+    });
+    store.set(DRAFT_KEY, null);
+    await load(true);
+    const notes = [...res.warnings];
+    if (res.restart.ok) showResult(notes.length ? "warn" : "ok", `Saved. ${res.restart.message}.`, notes);
+    else showResult("warn", "Saved, but the soundboard was not restarted.", [res.restart.message, ...notes]);
+  } catch (e) {
+    const d = e.detail && e.detail.errors ? e.detail : { errors: [e.message] };
+    showResult("error", e.status === 409 ? "Not saved: layout changed elsewhere." : "Not saved.", d.errors);
+  } finally {
+    state.saving = false; renderSaveBar();
+  }
+};
+
+window.addEventListener("beforeunload", (e) => {
+  if (state.draft && changes().length) { e.preventDefault(); e.returnValue = ""; }
+});
+
+// ---- routing ------------------------------------------------------------
 function route() {
   const [page, layer, r, c] = (location.hash.slice(1) || "layout").split("/");
   const current = page === "sounds" ? "sounds" : "layout";
   $("page-layout").hidden = current !== "layout";
   $("page-sounds").hidden = current !== "sounds";
+  $("savebar").hidden = current !== "layout";
   document.querySelectorAll("header nav a").forEach((a) => {
     if (a.dataset.page === current) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
   });
   if (current === "layout" && layer && state.layout) {
-    state.layer = Math.max(0, Math.min(state.layout.layers.length - 1, Number(layer) - 1));
+    state.layer = Math.max(0, Math.min(state.draft.length - 1, Number(layer) - 1));
     renderTabs(); renderGrid();
     const key = $("grid").querySelector(`.key[data-pos="${Number(r)}-${Number(c)}"]`);
     if (key) {
@@ -265,22 +589,57 @@ function route() {
 }
 window.addEventListener("hashchange", route);
 
-async function refresh(force) {
-  try {
-    const layout = await getJSON("/api/layout");
-    if (force || layout.keymap_mtime !== state.mtime) {
-      state.layout = layout; state.mtime = layout.keymap_mtime;
-      state.sounds = await getJSON("/api/sounds");
-      renderTabs(); renderGrid(); renderInfo(); renderBanks();
-    }
-    $("status").textContent = "keymap.py updated " + new Date(layout.keymap_mtime * 1000).toLocaleString();
-  } catch (e) {
-    $("errors").innerHTML = `<div class="error">${esc(e.message)}</div>`;
-    $("status").textContent = "error";
+// ---- loading ------------------------------------------------------------
+async function load(resetDraft) {
+  const [layout, sounds] = await Promise.all([api("/api/layout"), api("/api/sounds")]);
+  sounds.files = new Set(sounds.banks.flatMap((b) => b.tracks.map((t) => t.file)));
+  state.layout = layout; state.sounds = sounds;
+  state.revision = state.remoteRevision = layout.revision;
+  const kept = store.get(DRAFT_KEY);
+  if (!resetDraft && kept && kept.revision === layout.revision && kept.draft.length === layout.layers.length) {
+    state.draft = kept.draft;     // unsaved edits survive a page reload
+  } else {
+    if (!resetDraft && kept) store.set(DRAFT_KEY, null);
+    state.draft = freshDraft();
+  }
+  $("errors").innerHTML = "";
+  renderAll();
+  updateStatus();
+}
+
+function updateStatus() {
+  const t = new Date(state.layout.updated_at * 1000).toLocaleString();
+  $("status").textContent = `layout rev ${state.revision} · saved ${t}`;
+  if (state.remoteRevision !== state.revision) {
+    $("errors").innerHTML = `<div class="msg warn">The layout was changed elsewhere (rev ${state.remoteRevision}).
+      Discard your changes or reload the page to see it. <button class="btn small" onclick="store.set(DRAFT_KEY,null);location.reload()">Reload</button></div>`;
   }
 }
-refresh(true).then(route);
-setInterval(() => refresh(false), 5000);   // picks up edits to keymap.py
+
+async function poll() {
+  if (state.saving || !state.layout) return;
+  try {
+    const layout = await api("/api/layout");
+    if (layout.revision === state.revision) {
+      // files may have appeared/disappeared in sounds/
+      const sounds = await api("/api/sounds");
+      if (JSON.stringify(sounds.banks) !== JSON.stringify(state.sounds.banks)) {
+        sounds.files = new Set(sounds.banks.flatMap((b) => b.tracks.map((t) => t.file)));
+        state.sounds = sounds; renderGrid(); renderBanks();
+      }
+      return;
+    }
+    state.remoteRevision = layout.revision;
+    if (!changes().length) await load(true);   // nothing to lose: just take the new layout
+    else updateStatus();
+  } catch (e) { /* server restarting or offline: try again later */ }
+}
+
+load(false).then(route).catch((e) => {
+  $("errors").innerHTML = `<div class="msg error">${esc(e.message)}</div>`;
+  $("status").textContent = "error";
+});
+setInterval(poll, 5000);
 </script>
 </body>
 </html>

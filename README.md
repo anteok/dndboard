@@ -1,6 +1,6 @@
 # DnD Soundboard (Raspberry Pi 3B)
 
-6x14 key matrix (with diodes) + LCD 1602A (I2C) + EC11 encoder. Sound layout is in `keymap.py`, sound files go in `sounds/`.
+6x14 key matrix (with diodes) + LCD 1602A (I2C) + EC11 encoder. Sound files go in `sounds/`. The key layout lives in `dndboard.db` (SQLite) and is edited in the web UI; `keymap.py` is only the starting layout.
 
 ## Raspberry Pi setup (once)
 
@@ -24,7 +24,16 @@ Display not showing anything? Check its address with `i2cdetect -y 1` (usually `
 
 ## Web UI
 
-`webapp.py` is a separate web service that runs alongside the soundboard. It shows the sound banks on the device (subfolders of `sounds/`) and the layout: every layer as a 6x14 grid with the track or player function on each key. Missing files are marked red. It only reads `keymap.py` and `sounds/`, never the hardware, and picks up edits to `keymap.py` without a restart.
+`webapp.py` is a separate web service that runs alongside the soundboard and never touches the hardware.
+
+- **Layout** tab: every layer as a 6x14 grid. Click a key to put a sound, a player function (Next bank, BG prev / next / stop) or nothing on it. Changed keys get a red dot; edits stay in the browser until you press **Save & restart soundboard**, which writes them to `dndboard.db` and restarts the soundboard so it loads the new layout. Every layer needs a *Next bank* key (otherwise you'd be stuck on it), so Save refuses a layout without one.
+- **Sound banks** tab: the subfolders of `sounds/`, their tracks and which keys use them. Missing files are marked red.
+
+### Where the layout is stored
+
+`dndboard.db` (SQLite, next to the code; not in git). The first time either service starts, it is created from `keymap.py`. After that `keymap.py` is not read any more. To start over from `keymap.py`, stop both services and delete `dndboard.db`. Back up the layout with `cp dndboard.db dndboard.db.bak`.
+
+Save restarts the soundboard with `systemctl --user restart dndboard`, so both services must run as the same user (the default with the instructions below). Another command can be set with the `DNDBOARD_RESTART_CMD` environment variable. If the restart fails (e.g. when trying it on a PC), the layout is still saved and the page says so.
 
 ```
 uv run webapp.py              # http://<pi-address>/  (port 80)
@@ -47,7 +56,7 @@ systemctl --user enable --now dndboard-web
 journalctl --user -u dndboard-web -f
 ```
 
-JSON API: `/api/layout`, `/api/sounds`; interactive docs at `/api/docs`.
+JSON API: `GET/PUT /api/layout`, `GET /api/sounds`; interactive docs at `/api/docs`.
 
 ## Sound quality
 
@@ -78,7 +87,7 @@ Everyday commands:
 ```
 systemctl --user status dndboard      # is it running?
 journalctl --user -u dndboard -f      # live log (missing files, errors)
-systemctl --user restart dndboard     # after editing keymap.py or the code
+systemctl --user restart dndboard     # after changing the code (the web UI's Save does this for layout changes)
 systemctl --user disable --now dndboard   # turn autostart off
 ```
 

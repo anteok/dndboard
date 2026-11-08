@@ -3,14 +3,14 @@
 
 Железо: матрица клавиш 6x14 с диодами, LCD 1602A по I2C, энкодер EC11 с кнопкой.
 
-Управление:
-  [0][0]          — следующий банк звуков (по кругу)
-  [5][0] / [5][1] — фоновый трек назад / вперёд (запускает воспроизведение)
-  [5][2]          — стоп фоновой музыки
+Управление: любая клавиша — звук или функция плеера (следующий банк,
+фоновый трек назад / вперёд / стоп); что где — задаётся в раскладке.
   Энкодер: вращение — громкость, короткое нажатие — пауза/продолжить фон,
            удержание 1 с — Mute (вращение снимает Mute)
 
-Раскладка звуков — в keymap.py.
+Раскладка хранится в SQLite (dndboard.db) и редактируется через веб (webapp.py).
+При первом запуске база создаётся из keymap.py. Раскладка читается при старте:
+кнопка Save в вебе сохраняет её и перезапускает этот сервис.
 Запуск:   uv run soundboard.py
 Раскладка: uv run soundboard.py --map   (печатает и выходит, работает и без железа)
 Звуковые устройства: uv run soundboard.py --audio-devices
@@ -24,12 +24,10 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(BASE_DIR))
-from keymap import BANKS, BG_TRACKS  # noqa: E402
 from layout import (  # noqa: E402
-    SOUNDS_DIR, ROWS, COLS, SPECIAL_KEY_INFO, SPECIAL_KEYS,
-    KEY_BANK, KEY_BG_PREV, KEY_BG_NEXT, KEY_BG_STOP,
-    pretty_name, keymap_warnings, key_file as _key_file,
+    SOUNDS_DIR, ROWS, COLS, FUNCTIONS, KEYMAP_FILE, pretty_name, sound_files, layers_from_keymap,
 )
+import store  # noqa: E402
 
 # --- Настройки -------------------------------------------------------------
 # Распределение GPIO (Pi 3B, всего 26 свободных: GPIO 2–27):
@@ -45,7 +43,7 @@ ROW_PINS = [4, 17, 27, 22, 10, 25]
 COL_PINS = [9, 11, 5, 6, 13, 19, 26, 14, 15, 18, 23, 24, 12, 7]
 ENC_A, ENC_B, ENC_BTN = 20, 21, 16
 
-# Размер матрицы и служебные клавиши заданы в layout.py (их читает и веб-сервис)
+# Размер матрицы задан в layout.py (его читает и веб-сервис)
 assert (len(ROW_PINS), len(COL_PINS)) == (ROWS, COLS), "пины не совпадают с ROWS/COLS в layout.py"
 
 VOLUME_STEP = 0.05
@@ -64,26 +62,35 @@ RETRIGGER_GUARD = 0.06    # защита от дребезга: повторно
 SCAN_SETTLE = 0.002       # пауза между столбцами при сканировании
 
 
-def key_file(bank, r, c):
-    return _key_file(BANKS, bank, r, c)
+def load_layout():
+    """Раскладка из базы. Если база не открывается — аварийно берём keymap.py,
+    чтобы доска всё равно играла."""
+    try:
+        data = store.load()
+        return data["layers"], data["bg_tracks"]
+    except Exception as e:
+        print(f"Не удалось прочитать раскладку из {store.DB_PATH}: {e}. Беру {KEYMAP_FILE.name}.")
+        from keymap import BANKS, BG_TRACKS
+        return layers_from_keymap(BANKS), list(BG_TRACKS)
 
 
-for _w in keymap_warnings(BANKS):
-    print(f"Внимание: {_w}")
+LAYERS, BG_TRACKS = load_layout()
+
+
+def key_label(cell):
+    if not cell:
+        return "-"
+    if cell["type"] == "function":
+        return f"<< {FUNCTIONS[cell['function']][0].upper()} >>"
+    return pretty_name(cell["file"])
 
 
 def print_map():
-    labels = {k: f"<< {v[1].upper()} >>" for k, v in SPECIAL_KEY_INFO.items()}
-    for b_idx, bank in enumerate(BANKS):
-        print(f"\n=== Банк {b_idx + 1}: {bank['name']} ===")
+    for b_idx, layer in enumerate(LAYERS):
+        print(f"\n=== Банк {b_idx + 1}: {layer['name']} ===")
         for r in range(ROWS):
             for c in range(COLS):
-                if (r, c) in labels:
-                    label = labels[(r, c)]
-                else:
-                    f = key_file(b_idx, r, c)
-                    label = pretty_name(f) if f else "-"
-                print(f"  [{r}][{c:>2}] {label}")
+                print(f"  [{r}][{c:>2}] {key_label(layer['keys'][r][c])}")
     print("\n=== Фоновые треки ===")
     for i, t in enumerate(BG_TRACKS):
         print(f"  {i + 1:>2}. {pretty_name(t)}")
@@ -169,8 +176,7 @@ pygame.mixer.set_num_channels(MIXER_CHANNELS)
 def load_banks():
     """Грузим в память только файлы из раскладки; повторяющийся файл — один раз."""
     cache = {}
-    wanted = sorted({key_file(b, r, c) for b in range(len(BANKS))
-                     for r in range(ROWS) for c in range(COLS)} - {None})
+    wanted = sound_files(LAYERS)
     total = len(wanted)
     for i, f in enumerate(wanted, 1):
         if i % 10 == 0 or i == total:
@@ -182,8 +188,9 @@ def load_banks():
             cache[f] = None
 
     loaded = [
-        [[cache.get(key_file(b, r, c)) for c in range(COLS)] for r in range(ROWS)]
-        for b in range(len(BANKS))
+        [[cache.get(cell["file"]) if cell and cell["type"] == "sound" else None for cell in row]
+         for row in layer["keys"]]
+        for layer in LAYERS
     ]
     missing = sum(1 for s in cache.values() if s is None)
     if missing:
@@ -235,7 +242,7 @@ def render():
         if temp_message:
             line1 = temp_message
         else:
-            line1 = f"Bank {current_bank + 1} {BANKS[current_bank]['name']}"
+            line1 = f"Bank {current_bank + 1} {LAYERS[current_bank]['name']}"
             if is_muted:
                 line1 = line1[:11].ljust(11) + " MUTE"
 
@@ -322,32 +329,35 @@ def play_bg(index, direction=1):
         ui_dirty = True
 
 
-def handle_special_key(key):
+def handle_function(fn):
     global current_bank, bg_state, ui_dirty
     with state_lock:
-        if key == KEY_BANK:
-            current_bank = (current_bank + 1) % len(BANKS)
+        if fn == "bank_next":
+            current_bank = (current_bank + 1) % len(LAYERS)
             ui_dirty = True
-        elif key == KEY_BG_NEXT:
+        elif fn == "bg_next":
             # Если фон остановлен — первое нажатие запускает текущий трек
             play_bg(bg_index if bg_state == "stopped" else bg_index + 1)
-        elif key == KEY_BG_PREV:
+        elif fn == "bg_prev":
             play_bg(bg_index if bg_state == "stopped" else bg_index - 1, direction=-1)
-        elif key == KEY_BG_STOP:
+        elif fn == "bg_stop":
             pygame.mixer.music.stop()
             bg_state = "stopped"
             ui_dirty = True
 
 
 def on_key(r, c):
-    if (r, c) in SPECIAL_KEYS:
-        handle_special_key((r, c))
-        return
     bank = current_bank
+    cell = LAYERS[bank]["keys"][r][c]
+    if not cell:
+        return
+    if cell["type"] == "function":
+        handle_function(cell["function"])
+        return
     sound = loaded_banks[bank][r][c]
     if sound:
         sound.play()
-        show_temp(pretty_name(key_file(bank, r, c)))
+        show_temp(pretty_name(cell["file"]))
 
 
 # --- Матрица клавиш --------------------------------------------------------
