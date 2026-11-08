@@ -25,6 +25,7 @@ from pathlib import Path
 import uvicorn
 from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 BASE_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(BASE_DIR))
@@ -278,6 +279,18 @@ def api_upload(file: UploadFile = File(...), folder: str = Form(...), overwrite:
         "replaced": existed,
         "renamed": src.name != target.name,
     }
+
+
+# Звуковые файлы для прослушивания в браузере: /sounds/<банк>/<файл>.
+# StaticFiles сам не выпускает за пределы папки и поддерживает перемотку (Range).
+class SoundFiles(StaticFiles):
+    async def get_response(self, path, scope):
+        if Path(path).suffix.lower() not in AUDIO_EXTS:     # только аудио, без .part и прочего
+            raise HTTPException(404)
+        return await super().get_response(path, scope)
+
+
+app.mount("/sounds", SoundFiles(directory=SOUNDS_DIR, check_dir=False), name="sounds")
 
 
 @app.get("/")

@@ -109,6 +109,34 @@
     background: var(--danger); box-shadow: 0 0 0 2px var(--panel-2);
   }
   .key.function.changed::after { box-shadow: 0 0 0 2px var(--accent); }
+  /* play buttons */
+  .cell { position: relative; display: flex; min-width: 0; }
+  .cell > .key { flex: 1; min-width: 0; }
+  .cell > .key.sound .meta { padding-right: 24px; }      /* room for ▶ on the bottom row */
+  .cell > .play { position: absolute; right: 4px; bottom: 4px; width: 22px; height: 22px; }
+  .play {
+    --p: 0; flex: none; width: 24px; height: 24px; padding: 0; border-radius: 50%; cursor: pointer;
+    display: grid; place-items: center; color: var(--text);
+    border: 1px solid var(--line); background: var(--panel);
+  }
+  .play:hover { border-color: var(--accent); color: var(--accent); }
+  .play:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .play svg { width: 10px; height: 10px; fill: currentColor; }
+  .play.playing {
+    color: var(--accent-ink); border-color: var(--accent);
+    background: conic-gradient(var(--accent) calc(var(--p) * 1turn), color-mix(in srgb, var(--accent) 45%, var(--panel)) 0);
+  }
+  .toast {
+    position: fixed; left: 50%; bottom: 72px; transform: translateX(-50%); z-index: 20; max-width: calc(100vw - 32px);
+    background: var(--panel); border: 1px solid var(--danger); color: var(--danger);
+    padding: 8px 14px; border-radius: 8px; box-shadow: 0 4px 16px rgb(0 0 0 / .3);
+  }
+  .opt-row { display: flex; align-items: center; gap: 6px; }
+  .opt-row .opt { flex: 1; min-width: 0; }
+  .card li.bg-row, .bank li { align-items: center; }
+  .card li.bg-row { display: flex; gap: 8px; margin: 3px 0; }
+  .card #bg { padding-left: 0; list-style: none; counter-reset: bg; }
+  .card li.bg-row::before { counter-increment: bg; content: counter(bg) "."; color: var(--muted); min-width: 22px; text-align: right; font-variant-numeric: tabular-nums; }
   .key.focus { outline: 3px solid var(--accent); outline-offset: 2px; animation: pulse 1s ease-in-out 3; }
   @keyframes pulse { 50% { outline-offset: 5px; } }
 
@@ -231,6 +259,7 @@
 </header>
 <main>
   <div id="errors"></div>
+  <div class="toast" id="toast" role="status" hidden></div>
 
   <section id="page-layout">
   <h2>Layers</h2>
@@ -395,9 +424,9 @@ function keyHTML(cell, r, c, changed) {
   if (cell && cell.type === "sound") {
     const folder = folderOf(cell.file);
     const missing = state.sounds && !state.sounds.files.has(cell.file);
-    return `<button class="key sound${missing ? " missing" : ""}${ch}" ${attrs} data-file="${esc(cell.file)}" style="--hue:${hue(folder)}" title="${pos} ${esc(cell.file)}${missing ? " — FILE NOT FOUND" : ""}${changed ? " (unsaved)" : ""}">
+    return `<div class="cell"><button class="key sound${missing ? " missing" : ""}${ch}" ${attrs} data-file="${esc(cell.file)}" style="--hue:${hue(folder)}" title="${pos} ${esc(cell.file)}${missing ? " — FILE NOT FOUND" : ""}${changed ? " (unsaved)" : ""}">
       <span class="name">${esc(prettyName(cell.file))}</span>
-      <span class="meta"><span class="tag">${missing ? "missing file" : esc(folder)}</span></span></button>`;
+      <span class="meta"><span class="tag">${missing ? "missing file" : esc(folder)}</span></span></button>${missing ? "" : playBtn(cell.file)}</div>`;
   }
   return `<button class="key empty${ch}" ${attrs} title="${pos} empty${changed ? " (unsaved)" : ""}"><span class="name">—</span></button>`;
 }
@@ -415,6 +444,7 @@ function renderGrid() {
     for (let c = 0; c < cols; c++) html += keyHTML(layer.keys[r][c], r, c, !same(layer.keys[r][c], savedCell(li, r, c)));
   }
   g.innerHTML = html;
+  markPlaying();
 }
 $("grid").addEventListener("click", (e) => {
   const k = e.target.closest(".key");
@@ -426,7 +456,8 @@ function renderInfo() {
   $("functions").innerHTML = L.functions.map((f) => `<dt>${esc(f.label)}</dt><dd>${esc(f.description)}</dd>`).join("");
   $("encoder").innerHTML = L.encoder.map((e) => `<dt>${esc(e.action)}</dt><dd>${esc(e.description)}</dd>`).join("");
   $("bg").innerHTML = L.bg_tracks.map((t) =>
-    `<li title="${esc(t.file)}">${esc(t.label)}${t.missing ? ' <span class="missing-txt">missing</span>' : ""}</li>`).join("") || "<li>none</li>";
+    `<li class="bg-row" title="${esc(t.file)}"><span>${esc(t.label)}${t.missing ? ' <span class="missing-txt">missing</span>' : ""}</span>${t.missing ? "" : playBtn(t.file)}</li>`).join("") || "<li>none</li>";
+  markPlaying();
 }
 
 function renderSaveBar() {
@@ -454,12 +485,84 @@ function renderBanks() {
         const isNew = up.recent.has(t.file);
         return `<li class="${used ? "" : "unused"}${isNew ? " new" : ""}" title="${esc(t.file)} · ${kb(t.size)}">
           <span>${esc(t.label)}</span>${isNew ? '<span class="new-tag">NEW</span>' : ""}${t.background ? '<span class="pill">BG</span>' : ""}
-          <span class="where">${where || (t.background ? "" : "unassigned")}</span></li>`;
+          <span class="where">${where || (t.background ? "" : "unassigned")}</span>${playBtn(t.file)}</li>`;
       }).join("")}</ul>
     </details>`).join("");
+  markPlaying();
 }
 
 function renderAll() { renderTabs(); renderGrid(); renderInfo(); renderSaveBar(); renderBanks(); renderUploadFolders(); }
+
+// ---- preview player (plays in this browser, not on the board) ----------
+const ICON_PLAY = '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2 1 L9 5 L2 9 Z"/></svg>';
+const ICON_STOP = '<svg viewBox="0 0 10 10" aria-hidden="true"><rect x="2" y="2" width="6" height="6" rx="1"/></svg>';
+const player = { audio: new Audio(), file: null };
+player.audio.preload = "auto";
+const soundUrl = (f) => "/sounds/" + f.split("/").map(encodeURIComponent).join("/");
+
+function playBtn(file) {
+  return `<button type="button" class="play" data-play="${esc(file)}" aria-label="Play ${esc(prettyName(file))}" title="Play in browser">${ICON_PLAY}</button>`;
+}
+
+function markPlaying() {
+  document.querySelectorAll(".play[data-play]").forEach((b) => {
+    const on = b.dataset.play === player.file;
+    if (b.classList.contains("playing") === on) return;
+    b.classList.toggle("playing", on);
+    b.innerHTML = on ? ICON_STOP : ICON_PLAY;
+    b.setAttribute("aria-label", (on ? "Stop " : "Play ") + prettyName(b.dataset.play));
+    b.title = on ? "Stop" : "Play in browser";
+    if (!on) b.style.removeProperty("--p");
+  });
+}
+
+function stopPlayback() {
+  player.audio.pause();
+  player.file = null;
+  markPlaying();
+}
+
+function togglePlay(file) {
+  if (player.file === file) { stopPlayback(); return; }   // same button again = stop
+  player.audio.pause();
+  player.file = file;
+  player.audio.src = soundUrl(file);
+  player.audio.currentTime = 0;
+  markPlaying();
+  player.audio.play().catch((e) => {
+    if (e.name === "AbortError") return;                  // another sound was started meanwhile
+    showToast(`Can't play ${prettyName(file)}: ${e.name === "NotSupportedError" ? "the file is damaged or this browser can't play its format" : e.message}`);
+    if (player.file === file) stopPlayback();
+  });
+}
+
+player.audio.addEventListener("ended", stopPlayback);
+player.audio.addEventListener("error", () => {
+  if (!player.file) return;
+  showToast(`Can't play ${prettyName(player.file)}: the file is missing, damaged, or in a format this browser can't play`);
+  stopPlayback();
+});
+player.audio.addEventListener("timeupdate", () => {
+  const a = player.audio;
+  if (!player.file || !a.duration || !isFinite(a.duration)) return;
+  document.querySelectorAll(".play.playing").forEach((b) => b.style.setProperty("--p", (a.currentTime / a.duration).toFixed(3)));
+});
+
+// one handler for every ▶ on the page (keys, editor list, banks, BG tracks)
+document.addEventListener("click", (e) => {
+  const b = e.target.closest(".play[data-play]");
+  if (!b) return;
+  e.preventDefault(); e.stopPropagation();
+  togglePlay(b.dataset.play);
+}, true);
+
+let toastTimer;
+function showToast(text) {
+  const t = $("toast");
+  t.textContent = text; t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, 5000);
+}
 
 // ---- upload -------------------------------------------------------------
 const AUDIO_EXT = /\.(ogg|wav|mp3|flac)$/i;
@@ -673,14 +776,15 @@ function renderSoundList() {
     if (!ed.folder) html += `<div class="group-title">${esc(b.name)}</div>`;
     html += tracks.map((t) => {
       const used = usageOf(t.file);
-      return `<button type="button" class="opt" data-file="${esc(t.file)}" aria-current="${t.file === cur}" style="--hue:${hue(b.name)}" title="${esc(t.file)}">
-        <span class="dot"></span><span>${esc(t.label)}</span><span class="sub">${used.length ? "on " + used.join(" ") : ""}</span></button>`;
+      return `<div class="opt-row"><button type="button" class="opt" data-file="${esc(t.file)}" aria-current="${t.file === cur}" style="--hue:${hue(b.name)}" title="${esc(t.file)}">
+        <span class="dot"></span><span>${esc(t.label)}</span><span class="sub">${used.length ? "on " + used.join(" ") : ""}</span></button>${playBtn(t.file)}</div>`;
     }).join("");
   }
   $("ed-sounds").innerHTML = html || `<p class="empty-pane">No sounds match.</p>`;
   const sel = $("ed-sounds").querySelector('[aria-current="true"]');
   if (sel && !q) sel.scrollIntoView({ block: "center" });
-  $("ed-sounds").querySelectorAll("[data-file]").forEach((b) => b.onclick = () => {
+  markPlaying();
+  $("ed-sounds").querySelectorAll(".opt[data-file]").forEach((b) => b.onclick = () => {
     setCell({ type: "sound", file: b.dataset.file });
     afterEdit(true);
   });
