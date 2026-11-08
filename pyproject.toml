@@ -7,6 +7,9 @@ readme = "README.md"
 requires-python = ">=3.11,<3.13"
 dependencies = [
     "pygame>=2.6",
+    # Веб-интерфейс (webapp.py)
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
     # Железо Raspberry Pi. На Windows/macOS не ставится — там работает только `--map`.
     "gpiozero>=2.0; sys_platform == 'linux'",
     "lgpio>=0.2.2; sys_platform == 'linux'",

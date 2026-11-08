@@ -25,8 +25,11 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(BASE_DIR))
 from keymap import BANKS, BG_TRACKS  # noqa: E402
-
-SOUNDS_DIR = BASE_DIR / "sounds"
+from layout import (  # noqa: E402
+    SOUNDS_DIR, ROWS, COLS, SPECIAL_KEY_INFO, SPECIAL_KEYS,
+    KEY_BANK, KEY_BG_PREV, KEY_BG_NEXT, KEY_BG_STOP,
+    pretty_name, keymap_warnings, key_file as _key_file,
+)
 
 # --- Настройки -------------------------------------------------------------
 # Распределение GPIO (Pi 3B, всего 26 свободных: GPIO 2–27):
@@ -42,12 +45,8 @@ ROW_PINS = [4, 17, 27, 22, 10, 25]
 COL_PINS = [9, 11, 5, 6, 13, 19, 26, 14, 15, 18, 23, 24, 12, 7]
 ENC_A, ENC_B, ENC_BTN = 20, 21, 16
 
-ROWS, COLS = len(ROW_PINS), len(COL_PINS)
-KEY_BANK = (0, 0)
-KEY_BG_PREV = (ROWS - 1, 0)   # нижний левый угол
-KEY_BG_NEXT = (ROWS - 1, 1)
-KEY_BG_STOP = (ROWS - 1, 2)
-SPECIAL_KEYS = {KEY_BANK, KEY_BG_PREV, KEY_BG_NEXT, KEY_BG_STOP}
+# Размер матрицы и служебные клавиши заданы в layout.py (их читает и веб-сервис)
+assert (len(ROW_PINS), len(COL_PINS)) == (ROWS, COLS), "пины не совпадают с ROWS/COLS в layout.py"
 
 VOLUME_STEP = 0.05
 START_VOLUME = 0.7
@@ -65,38 +64,16 @@ RETRIGGER_GUARD = 0.06    # защита от дребезга: повторно
 SCAN_SETTLE = 0.002       # пауза между столбцами при сканировании
 
 
-def pretty_name(path):
-    """'fight/sword_clash_01.ogg' -> 'Sword Clash 01'; '01_beginning_into...' -> 'Beginning Into...'"""
-    stem = Path(path).stem
-    parts = stem.split("_")
-    if len(parts) > 1 and parts[0].isdigit():
-        parts = parts[1:]
-    return " ".join(p.capitalize() for p in parts)
-
-
-def check_keymap():
-    """Предупреждает, если раскладка в keymap.py не совпадает с размером матрицы."""
-    for b_idx, bank in enumerate(BANKS):
-        keys = bank["keys"]
-        if len(keys) != ROWS or any(len(row) != COLS for row in keys):
-            shape = f"{len(keys)}x{max((len(r) for r in keys), default=0)}"
-            print(f"Внимание: банк {b_idx + 1} ({bank['name']}) имеет размер {shape}, "
-                  f"а матрица {ROWS}x{COLS}. Лишние клавиши игнорируются, недостающие пустые.")
-
-
 def key_file(bank, r, c):
-    keys = BANKS[bank]["keys"]
-    if r < len(keys) and c < len(keys[r]) and (r, c) not in SPECIAL_KEYS:
-        return keys[r][c]
-    return None
+    return _key_file(BANKS, bank, r, c)
 
 
-check_keymap()
+for _w in keymap_warnings(BANKS):
+    print(f"Внимание: {_w}")
 
 
 def print_map():
-    labels = {KEY_BANK: "<< BANK >>", KEY_BG_PREV: "<< BG PREV >>",
-              KEY_BG_NEXT: "<< BG NEXT >>", KEY_BG_STOP: "<< BG STOP >>"}
+    labels = {k: f"<< {v[1].upper()} >>" for k, v in SPECIAL_KEY_INFO.items()}
     for b_idx, bank in enumerate(BANKS):
         print(f"\n=== Банк {b_idx + 1}: {bank['name']} ===")
         for r in range(ROWS):

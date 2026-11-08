@@ -1,0 +1,16 @@
+# systemd user service: web UI for viewing the layout (port 80).
+# Runs alongside dndboard.service and only reads keymap.py / sounds/.
+# Install: see "Web UI" in README.md
+[Unit]
+Description=DnD Soundboard web UI
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/dndboard
+ExecStart=%h/.local/bin/uv run --frozen webapp.py
+Environment=PYTHONUNBUFFERED=1
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

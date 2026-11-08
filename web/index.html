@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DnD Soundboard · Layout</title>
+<style>
+  :root {
+    --bg: #15130f;
+    --panel: #1f1c17;
+    --panel-2: #29251e;
+    --line: #3a342a;
+    --text: #ece4d4;
+    --muted: #a39782;
+    --accent: #d8a24a;
+    --accent-ink: #1b1508;
+    --danger: #e0644f;
+    --key-empty: #1a1814;
+    --radius: 8px;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #f4efe4; --panel: #fffaf0; --panel-2: #f1e8d6; --line: #d9ccb2;
+      --text: #2a2418; --muted: #7a6d55; --accent: #a8701a; --accent-ink: #fff8ea;
+      --danger: #b8402c; --key-empty: #ece4d2;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
+    padding: 18px 20px 10px; border-bottom: 1px solid var(--line);
+  }
+  header h1 { margin: 0; font-size: 20px; letter-spacing: .02em; }
+  header h1 span { color: var(--accent); }
+  header nav a {
+    color: var(--text); text-decoration: none; padding: 4px 10px; border-radius: 6px;
+    background: var(--panel-2); font-weight: 600;
+  }
+  header .status { margin-left: auto; color: var(--muted); font-size: 12px; }
+  main { padding: 16px 20px 40px; max-width: 1400px; margin: 0 auto; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 28px 0 10px; }
+  .error, .warn {
+    padding: 10px 12px; border-radius: var(--radius); margin: 10px 0;
+    border: 1px solid var(--danger); color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent);
+  }
+  .warn { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+
+  /* Layer tabs */
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+  .tab {
+    border: 1px solid var(--line); background: var(--panel); color: var(--text);
+    padding: 7px 14px; border-radius: 999px; cursor: pointer; font: inherit;
+  }
+  .tab small { color: var(--muted); margin-left: 6px; }
+  .tab[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  .tab[aria-selected="true"] small { color: inherit; opacity: .7; }
+
+  /* Key grid */
+  .board {
+    overflow-x: auto; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 12px;
+  }
+  .grid {
+    display: grid; gap: 6px; min-width: 1120px;
+    grid-template-columns: 22px repeat(var(--cols), minmax(72px, 1fr));
+  }
+  .axis { color: var(--muted); font-size: 11px; text-align: center; align-self: center; font-variant-numeric: tabular-nums; }
+  .key {
+    position: relative; min-height: 62px; padding: 6px 7px 6px 9px; border-radius: 6px;
+    background: var(--panel-2); border: 1px solid var(--line);
+    display: flex; flex-direction: column; justify-content: space-between; overflow: hidden;
+    transition: opacity .12s, outline-color .12s;
+  }
+  .key::before {      /* folder colour stripe */
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--hue, transparent);
+  }
+  .key .name { font-weight: 600; font-size: 12.5px; line-height: 1.2; word-break: break-word; }
+  .key .meta { font-size: 10.5px; color: var(--muted); display: flex; justify-content: space-between; gap: 4px; }
+  .key.empty { background: var(--key-empty); border-style: dashed; }
+  .key.empty .name { color: var(--muted); font-weight: 400; }
+  .key.function { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .key.function .meta { color: inherit; opacity: .75; }
+  .key.function::before { display: none; }
+  .key.missing { border-color: var(--danger); }
+  .key.missing .meta .tag { color: var(--danger); font-weight: 700; }
+  .grid.dim .key:not(.hl) { opacity: .25; }
+  .key.hl { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  /* Side info */
+  .info { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-top: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+  .card h3 { margin: 0 0 8px; font-size: 14px; }
+  .card ol, .card ul { margin: 0; padding-left: 20px; }
+  .card li { margin: 2px 0; }
+  .card dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; }
+  .card dt { font-weight: 600; } .card dd { margin: 0; color: var(--muted); }
+  .missing-txt { color: var(--danger); font-weight: 600; font-size: 12px; }
+
+  /* Sound banks */
+  .banks { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+  .bank { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .bank summary {
+    list-style: none; cursor: pointer; padding: 10px 14px; display: flex; align-items: center; gap: 10px;
+    border-left: 4px solid var(--hue);
+  }
+  .bank summary::-webkit-details-marker { display: none; }
+  .bank summary .title { font-weight: 700; text-transform: capitalize; }
+  .bank summary .count { margin-left: auto; color: var(--muted); font-size: 12px; text-align: right; }
+  .bank ul { list-style: none; margin: 0; padding: 4px 0 8px; border-top: 1px solid var(--line); max-height: 320px; overflow-y: auto; }
+  .bank li { display: flex; gap: 8px; padding: 3px 14px; font-size: 13px; }
+  .bank li .where { margin-left: auto; color: var(--muted); font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .bank li.unused { color: var(--muted); }
+  .bank li[data-file] { cursor: default; }
+  .bank li:hover { background: var(--panel-2); }
+  .pill { font-size: 10px; padding: 1px 6px; border-radius: 999px; background: var(--panel-2); color: var(--muted); border: 1px solid var(--line); }
+  @media (max-width: 600px) {
+    header, main { padding-left: 16px; padding-right: 16px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>DnD <span>Soundboard</span></h1>
+  <nav><a href="/">Layout</a></nav>
+  <div class="status" id="status">loading…</div>
+</header>
+<main>
+  <div id="errors"></div>
+
+  <h2>Layout · layers</h2>
+  <div class="tabs" id="tabs" role="tablist"></div>
+  <div class="board"><div class="grid" id="grid"></div></div>
+
+  <div class="info">
+    <div class="card"><h3>Player functions</h3><dl id="functions"></dl></div>
+    <div class="card"><h3>Encoder</h3><dl id="encoder"></dl></div>
+    <div class="card"><h3>Background tracks <small class="pill">BG prev / next</small></h3><ol id="bg"></ol></div>
+  </div>
+
+  <h2>Sound banks on device <span id="banks-total" class="pill"></span></h2>
+  <p id="banks-hint" style="color:var(--muted);margin:-4px 0 12px;font-size:12px">Hover a bank or track to highlight its keys on the current layer.</p>
+  <div class="banks" id="banks"></div>
+</main>
+
+<script>
+const state = { layout: null, sounds: null, layer: 0, mtime: null };
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const hue = (name) => { let h = 0; for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 360; return `hsl(${h} 55% 55%)`; };
+const kb = (n) => n > 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.round(n / 1024) + " KB";
+
+try { const l = Number(localStorage.getItem("dndboard.layer")); if (l >= 0) state.layer = l; } catch (e) {}
+
+async function getJSON(url) {
+  const r = await fetch(url, { cache: "no-store" });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.detail || `${url}: HTTP ${r.status}`);
+  return body;
+}
+
+function renderTabs() {
+  const { layers } = state.layout;
+  if (state.layer >= layers.length) state.layer = 0;
+  $("tabs").innerHTML = layers.map((l, i) => {
+    const n = l.keys.flat().filter((k) => k.type === "sound").length;
+    return `<button class="tab" role="tab" aria-selected="${i === state.layer}" data-i="${i}">${i + 1}. ${esc(l.name)}<small>${n}</small></button>`;
+  }).join("");
+  $("tabs").querySelectorAll(".tab").forEach((b) => b.onclick = () => {
+    state.layer = Number(b.dataset.i);
+    try { localStorage.setItem("dndboard.layer", state.layer); } catch (e) {}
+    renderTabs(); renderGrid();
+  });
+}
+
+function renderGrid() {
+  const { rows, cols, layers } = state.layout;
+  const layer = layers[state.layer];
+  const g = $("grid");
+  g.style.setProperty("--cols", cols);
+  let html = `<div></div>`;
+  for (let c = 0; c < cols; c++) html += `<div class="axis">${c}</div>`;
+  for (let r = 0; r < rows; r++) {
+    html += `<div class="axis">${r}</div>`;
+    for (const k of layer.keys[r]) {
+      const pos = `[${k.r}][${k.c}]`;
+      if (k.type === "function") {
+        html += `<div class="key function" title="${pos} ${esc(k.description)}"><div class="name">${esc(k.label)}</div><div class="meta"><span>function</span></div></div>`;
+      } else if (k.type === "sound") {
+        html += `<div class="key sound${k.missing ? " missing" : ""}" data-file="${esc(k.file)}" data-folder="${esc(k.folder)}" style="--hue:${hue(k.folder)}" title="${pos} ${esc(k.file)}${k.missing ? " — FILE NOT FOUND" : ""}">
+          <div class="name">${esc(k.label)}</div>
+          <div class="meta"><span class="tag">${k.missing ? "missing file" : esc(k.folder)}</span></div></div>`;
+      } else {
+        html += `<div class="key empty" title="${pos} empty"><div class="name">—</div></div>`;
+      }
+    }
+  }
+  g.innerHTML = html;
+}
+
+function renderInfo() {
+  const L = state.layout;
+  const fn = L.layers[0] ? L.layers[0].keys.flat().filter((k) => k.type === "function") : [];
+  $("functions").innerHTML = fn.map((k) => `<dt>[${k.r}][${k.c}] ${esc(k.label)}</dt><dd>${esc(k.description)}</dd>`).join("");
+  $("encoder").innerHTML = L.encoder.map((e) => `<dt>${esc(e.action)}</dt><dd>${esc(e.description)}</dd>`).join("");
+  $("bg").innerHTML = L.bg_tracks.map((t) =>
+    `<li title="${esc(t.file)}">${esc(t.label)}${t.missing ? ' <span class="missing-txt">missing</span>' : ""}</li>`).join("") || "<li>none</li>";
+  $("errors").innerHTML = L.warnings.map((w) => `<div class="warn">${esc(w)}</div>`).join("");
+}
+
+function renderBanks() {
+  const S = state.sounds;
+  $("banks-total").textContent = `${S.banks.length} banks · ${S.total_tracks} tracks`;
+  if (!S.found) { $("banks").innerHTML = `<div class="error">Sounds folder not found: ${esc(S.sounds_dir)}</div>`; return; }
+  $("banks").innerHTML = S.banks.map((b) => `
+    <details class="bank" data-folder="${esc(b.name)}" style="--hue:${hue(b.name)}">
+      <summary><span class="title">${esc(b.name)}</span>
+        <span class="count">${b.tracks.length} tracks · ${kb(b.size)}<br>${b.assigned} assigned</span></summary>
+      <ul>${b.tracks.map((t) => {
+        const where = t.used_on.map((u) => `${u.layer + 1}:[${u.r}][${u.c}]`).join(" ");
+        const used = t.used_on.length || t.background;
+        return `<li class="${used ? "" : "unused"}" data-file="${esc(t.file)}" title="${esc(t.file)} · ${kb(t.size)}">
+          <span>${esc(t.label)}</span>${t.background ? '<span class="pill">BG</span>' : ""}
+          <span class="where">${where || (t.background ? "" : "unassigned")}</span></li>`;
+      }).join("")}</ul>
+    </details>`).join("");
+}
+
+// Hovering a bank / track highlights its keys on the visible layer
+function highlight(sel) {
+  const g = $("grid");
+  g.querySelectorAll(".key.hl").forEach((k) => k.classList.remove("hl"));
+  if (!sel) { g.classList.remove("dim"); return; }
+  const hits = g.querySelectorAll(sel);
+  hits.forEach((k) => k.classList.add("hl"));
+  g.classList.toggle("dim", hits.length > 0);
+}
+$("banks").addEventListener("mouseover", (e) => {
+  const li = e.target.closest("li[data-file]");
+  if (li) return highlight(`.key[data-file="${CSS.escape(li.dataset.file)}"]`);
+  const b = e.target.closest(".bank");
+  highlight(b ? `.key[data-folder="${CSS.escape(b.dataset.folder)}"]` : null);
+});
+$("banks").addEventListener("mouseleave", () => highlight(null));
+
+async function refresh(force) {
+  try {
+    const layout = await getJSON("/api/layout");
+    if (force || layout.keymap_mtime !== state.mtime) {
+      state.layout = layout; state.mtime = layout.keymap_mtime;
+      state.sounds = await getJSON("/api/sounds");
+      renderTabs(); renderGrid(); renderInfo(); renderBanks();
+    }
+    $("status").textContent = "keymap.py updated " + new Date(layout.keymap_mtime * 1000).toLocaleString();
+  } catch (e) {
+    $("errors").innerHTML = `<div class="error">${esc(e.message)}</div>`;
+    $("status").textContent = "error";
+  }
+}
+refresh(true);
+setInterval(() => refresh(false), 5000);   // picks up edits to keymap.py
+</script>
+</body>
+</html>

@@ -17,9 +17,37 @@
 ```
 uv run soundboard.py          # soundboard
 uv run soundboard.py --map    # print the key layout (works on any PC)
+uv run webapp.py              # web UI on port 80, see "Web UI" below
 ```
 
 Display not showing anything? Check its address with `i2cdetect -y 1` (usually `0x27`, sometimes `0x3F`) and pass it to `LCD(address=...)`.
+
+## Web UI
+
+`webapp.py` is a separate web service that runs alongside the soundboard. It shows the sound banks on the device (subfolders of `sounds/`) and the layout: every layer as a 6x14 grid with the track or player function on each key. Missing files are marked red. It only reads `keymap.py` and `sounds/`, never the hardware, and picks up edits to `keymap.py` without a restart.
+
+```
+uv run webapp.py              # http://<pi-address>/  (port 80)
+uv run webapp.py --port 8080  # any other port, e.g. to try it on a PC
+```
+
+Port 80 is privileged on Linux. Let normal users open it (once):
+
+```
+echo 'net.ipv4.ip_unprivileged_port_start=80' | sudo tee /etc/sysctl.d/99-dndboard-web.conf
+sudo sysctl --system
+```
+
+Autostart works like the main service:
+
+```
+cp ~/dndboard/dndboard-web.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now dndboard-web
+journalctl --user -u dndboard-web -f
+```
+
+JSON API: `/api/layout`, `/api/sounds`; interactive docs at `/api/docs`.
 
 ## Sound quality
 
