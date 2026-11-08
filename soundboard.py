@@ -16,6 +16,7 @@
 Звуковые устройства: uv run soundboard.py --audio-devices
 """
 
+import signal
 import sys
 import time
 import threading
@@ -396,7 +397,15 @@ def scan_matrix():
         time.sleep(SCAN_SETTLE)
 
 
+def _on_sigterm(signum, frame):
+    # systemd останавливает сервис сигналом SIGTERM — завершаемся так же чисто, как по Ctrl+C.
+    # Повторные SIGTERM (uv пересылает сигнал дочернему процессу) игнорируем.
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    raise KeyboardInterrupt
+
+
 def main():
+    signal.signal(signal.SIGTERM, _on_sigterm)
     apply_volume()
     display.write("Ready to Play!".center(16), "Press any key".center(16))
     time.sleep(1.5)

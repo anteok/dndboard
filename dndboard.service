@@ -1,0 +1,16 @@
+# systemd user service: starts the soundboard at boot.
+# Install: see "Autostart" in README.md
+[Unit]
+Description=DnD Soundboard
+# On desktop images sound goes through PipeWire; wait for it (ignored on Lite)
+After=pipewire.service wireplumber.service
+
+[Service]
+WorkingDirectory=%h/dndboard
+ExecStart=%h/.local/bin/uv run --frozen soundboard.py
+Environment=PYTHONUNBUFFERED=1
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target
