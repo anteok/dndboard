@@ -28,6 +28,7 @@ Display not showing anything? Check its address with `i2cdetect -y 1` (usually `
 
 - **Layout** tab: every layer as a 6x14 grid. Click a key to put a sound, a player function (Next bank, BG prev / next / stop) or nothing on it. Changed keys get a red dot; edits stay in the browser until you press **Save & restart soundboard**, which writes them to `dndboard.db` and restarts the soundboard so it loads the new layout. Every layer needs a *Next bank* key (otherwise you'd be stuck on it), so Save refuses a layout without one.
 - **Sound banks** tab: the subfolders of `sounds/`, their tracks and which keys use them. Missing files are marked red.
+- **Uploading sounds** (Sound banks tab): drop `.ogg`, `.wav`, `.mp3` or `.flac` files on the page, pick an existing bank or type a new bank name, and press Upload. File and bank names are tidied up for the LCD (lowercase, plain Latin letters: `Гром (2).OGG` → `grom_2.ogg`). A file with the same name is only replaced if you tick *Replace*. Files are checked to really be audio, max 100 MB each (`DNDBOARD_MAX_UPLOAD_MB`), and at least 100 MB is always left free on the SD card. Uploading doesn't touch the layout: put the new sound on a key and Save. Replacing a sound that is already on a key takes effect at the next Save (restart). 44.1 kHz files play best; other rates work but are resampled.
 
 ### Where the layout is stored
 
@@ -56,7 +57,9 @@ systemctl --user enable --now dndboard-web
 journalctl --user -u dndboard-web -f
 ```
 
-JSON API: `GET/PUT /api/layout`, `GET /api/sounds`; interactive docs at `/api/docs`.
+JSON API: `GET/PUT /api/layout`, `GET /api/sounds`, `POST /api/sounds/upload`; interactive docs at `/api/docs`.
+
+The web UI has no password: anyone on the same network can change the layout and upload files. Keep the Pi on a network you trust.
 
 ## Sound quality
 

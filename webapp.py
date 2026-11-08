@@ -12,14 +12,18 @@
 
 import argparse
 import os
+import re
 import shlex
+import shutil
 import socket
 import subprocess
 import sys
+import tempfile
+import unicodedata
 from pathlib import Path
 
 import uvicorn
-from fastapi import Body, FastAPI, HTTPException
+from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -34,6 +38,11 @@ WEB_DIR = BASE_DIR / "web"
 DEFAULT_PORT = int(os.environ.get("DNDBOARD_WEB_PORT", "80"))
 RESTART_CMD = os.environ.get("DNDBOARD_RESTART_CMD", "systemctl --user restart dndboard")
 RESTART_TIMEOUT = 30
+
+# Загрузка звуков
+MAX_UPLOAD_MB = int(os.environ.get("DNDBOARD_MAX_UPLOAD_MB", "100"))   # на один файл
+MIN_FREE_MB = 100           # сколько места оставить на SD-карте после загрузки
+MAX_SEGMENT_LEN = 60        # длина имени папки/файла
 
 
 def sound_exists(rel):
@@ -179,6 +188,96 @@ def api_save_layout(body: dict = Body(...)):
 @app.get("/api/sounds")
 def api_sounds():
     return build_sounds()
+
+
+# --- Загрузка звуков -------------------------------------------------------
+# LCD 1602 показывает только ASCII (в его ПЗУ нет кириллицы), а имя файла выводится
+# на экран при нажатии клавиши, — поэтому имена транслитерируем в латиницу.
+_TRANSLIT = dict(zip(
+    "абвгдеёжзийклмнопрстуфхцчшщъыьэюяіїєґ",
+    ["a", "b", "v", "g", "d", "e", "e", "zh", "z", "i", "y", "k", "l", "m", "n", "o", "p", "r",
+     "s", "t", "u", "f", "kh", "ts", "ch", "sh", "shch", "", "y", "", "e", "yu", "ya",
+     "i", "yi", "ye", "g"]))
+
+
+def clean_name(name, what):
+    """'Dragon Roar (1)' -> 'dragon_roar_1', 'Гром' -> 'grom'. Только ASCII."""
+    name = "".join(_TRANSLIT.get(ch, ch) for ch in name.strip().lower())
+    name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()   # é -> e
+    name = re.sub(r"[^a-z0-9_-]+", "_", name).strip("_-")
+    name = re.sub(r"_+", "_", name)[:MAX_SEGMENT_LEN].strip("_-")
+    if not name:
+        raise HTTPException(400, f"Invalid {what} name")
+    return name
+
+
+def audio_kind(head):
+    """Тип аудио по первым байтам файла (расширению не верим)."""
+    if head[:4] == b"OggS":
+        return ".ogg"
+    if head[:4] == b"RIFF" and head[8:12] == b"WAVE":
+        return ".wav"
+    if head[:4] == b"fLaC":
+        return ".flac"
+    if head[:3] == b"ID3" or (len(head) > 1 and head[0] == 0xFF and head[1] & 0xE0 == 0xE0):
+        return ".mp3"
+    return None
+
+
+@app.post("/api/sounds/upload")
+def api_upload(file: UploadFile = File(...), folder: str = Form(...), overwrite: bool = Form(False)):
+    """Загружает один звук в sounds/<folder>/. Папка создаётся, если её нет.
+
+    Имя файла нормализуется (строчные буквы, '_' вместо пробелов и знаков).
+    Существующий файл заменяется только при overwrite=true. Раскладку не меняет и
+    soundboard не перезапускает: новый звук заиграет, когда его поставят на клавишу.
+    """
+    folder_name = clean_name(folder, "bank")
+    src = Path(file.filename or "")
+    ext = src.suffix.lower()
+    if ext not in AUDIO_EXTS:
+        raise HTTPException(415, f"{src.name}: only {', '.join(sorted(AUDIO_EXTS))} files are supported")
+    target_rel = f"{folder_name}/{clean_name(src.stem, 'file')}{ext}"
+    target = SOUNDS_DIR / target_rel
+
+    head = file.file.read(16)
+    kind = audio_kind(head)
+    if kind != ext:
+        raise HTTPException(415, f"{src.name}: doesn't look like a real {ext} file")
+
+    file.file.seek(0, os.SEEK_END)
+    size = file.file.tell()
+    file.file.seek(0)
+    if size > MAX_UPLOAD_MB * 1024 * 1024:
+        raise HTTPException(413, f"{src.name}: larger than {MAX_UPLOAD_MB} MB")
+    SOUNDS_DIR.mkdir(exist_ok=True)
+    free = shutil.disk_usage(SOUNDS_DIR).free
+    if free - size < MIN_FREE_MB * 1024 * 1024:
+        raise HTTPException(507, f"Not enough free space on the device ({free // 1048576} MB free)")
+
+    existed = target.exists()
+    if existed and not overwrite:
+        raise HTTPException(409, f"{target_rel} already exists")
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    # пишем во временный файл рядом и переименовываем — недокачанный файл не появится в банке
+    fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=".upload-", suffix=".part")
+    try:
+        with os.fdopen(fd, "wb") as out:
+            shutil.copyfileobj(file.file, out, 1024 * 1024)
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, target)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+    return {
+        "file": target_rel,
+        "label": pretty_name(target_rel),
+        "size": size,
+        "replaced": existed,
+        "renamed": src.name != target.name,
+    }
 
 
 @app.get("/")

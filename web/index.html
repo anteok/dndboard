@@ -186,6 +186,36 @@
   .bank li .where a { color: var(--accent); text-decoration: none; margin-left: 4px; }
   .bank li .where a:hover { text-decoration: underline; }
   .bank li:hover { background: var(--panel-2); }
+  .bank li.new { background: color-mix(in srgb, var(--ok) 14%, transparent); }
+  .bank li .new-tag { color: var(--ok); font-size: 10px; font-weight: 700; }
+
+  /* Upload */
+  .upload { margin-bottom: 16px; }
+  .drop {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+    border: 2px dashed var(--line); border-radius: 10px; padding: 22px 16px; text-align: center;
+    cursor: pointer; color: var(--muted); transition: border-color .12s, background .12s;
+  }
+  .drop strong { color: var(--text); }
+  .drop:hover, .drop.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent); }
+  .drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+  .up-opts { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 12px; }
+  .up-opts label { color: var(--muted); display: flex; gap: 6px; align-items: center; }
+  .up-opts select, .up-opts input[type=text] {
+    font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 8px; padding: 6px 10px; min-width: 0;
+  }
+  .up-opts .spacer { flex: 1; }
+  .card .queue { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+  .queue li { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; padding: 6px 8px; border-radius: 7px; background: var(--panel-2); font-size: 13px; }
+  .queue .fname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .queue .fsize { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .queue .st { font-size: 12px; min-width: 90px; text-align: right; }
+  .queue .st.ok { color: var(--ok); } .queue .st.err { color: var(--danger); } .queue .st.wait { color: var(--muted); }
+  .queue .detail { grid-column: 1 / -1; font-size: 11px; color: var(--muted); margin-top: -2px; }
+  .queue .detail.err { color: var(--danger); }
+  .queue progress { width: 90px; height: 6px; accent-color: var(--accent); }
+  .queue .x { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0 4px; font-size: 16px; line-height: 1; }
   .pill { font-size: 10px; padding: 1px 6px; border-radius: 999px; background: var(--panel-2); color: var(--muted); border: 1px solid var(--line); }
   @media (max-width: 600px) {
     header, main { padding-left: 16px; padding-right: 16px; }
@@ -217,6 +247,24 @@
   </section>
 
   <section id="page-sounds" hidden>
+  <h2>Upload sounds</h2>
+  <div class="card upload">
+    <label class="drop" id="drop">
+      <input type="file" id="up-input" multiple accept=".ogg,.wav,.mp3,.flac,audio/ogg,audio/wav,audio/mpeg,audio/flac">
+      <strong>Drop sound files here or click to choose</strong>
+      <span>.ogg, .wav, .mp3, .flac · names are tidied up: “Dragon Roar (1).OGG” → dragon_roar_1.ogg</span>
+    </label>
+    <div class="up-opts">
+      <label>To bank <select id="up-folder"></select></label>
+      <input type="text" id="up-new" placeholder="New bank name" maxlength="60" hidden>
+      <label><input type="checkbox" id="up-overwrite"> Replace files with the same name</label>
+      <span class="spacer"></span>
+      <button class="btn" id="up-clear" hidden>Clear list</button>
+      <button class="btn primary" id="up-start" disabled>Upload</button>
+    </div>
+    <ul class="queue" id="up-queue"></ul>
+  </div>
+
   <h2>Sound banks on device <span id="banks-total" class="pill"></span></h2>
   <p class="hint">Open a bank to see its tracks. Click a key position (layer:[row][col]) to show it on the layout. Shows the saved layout.</p>
   <div class="banks" id="banks"></div>
@@ -396,21 +444,139 @@ function renderBanks() {
   $("banks-total").textContent = `${S.banks.length} banks · ${S.total_tracks} tracks`;
   if (!S.found) { $("banks").innerHTML = `<div class="msg error">Sounds folder not found: ${esc(S.sounds_dir)}</div>`; return; }
   $("banks").innerHTML = S.banks.map((b) => `
-    <details class="bank" data-folder="${esc(b.name)}" style="--hue:${hue(b.name)}"${openBanks.has(b.name) ? " open" : ""}>
+    <details class="bank" data-folder="${esc(b.name)}" style="--hue:${hue(b.name)}"${openBanks.has(b.name) || up.openBanks.has(b.name) ? " open" : ""}>
       <summary><span class="title">${esc(b.name)}</span>
         <span class="count">${b.tracks.length} tracks · ${kb(b.size)}<br>${b.assigned} assigned</span></summary>
       <ul>${b.tracks.map((t) => {
         const where = t.used_on.map((u) =>
           `<a href="#layout/${u.layer + 1}/${u.r}/${u.c}" title="${esc(u.layer_name)}">${u.layer + 1}:[${u.r}][${u.c}]</a>`).join("");
         const used = t.used_on.length || t.background;
-        return `<li class="${used ? "" : "unused"}" title="${esc(t.file)} · ${kb(t.size)}">
-          <span>${esc(t.label)}</span>${t.background ? '<span class="pill">BG</span>' : ""}
+        const isNew = up.recent.has(t.file);
+        return `<li class="${used ? "" : "unused"}${isNew ? " new" : ""}" title="${esc(t.file)} · ${kb(t.size)}">
+          <span>${esc(t.label)}</span>${isNew ? '<span class="new-tag">NEW</span>' : ""}${t.background ? '<span class="pill">BG</span>' : ""}
           <span class="where">${where || (t.background ? "" : "unassigned")}</span></li>`;
       }).join("")}</ul>
     </details>`).join("");
 }
 
-function renderAll() { renderTabs(); renderGrid(); renderInfo(); renderSaveBar(); renderBanks(); }
+function renderAll() { renderTabs(); renderGrid(); renderInfo(); renderSaveBar(); renderBanks(); renderUploadFolders(); }
+
+// ---- upload -------------------------------------------------------------
+const AUDIO_EXT = /\.(ogg|wav|mp3|flac)$/i;
+const up = { items: [], busy: false, recent: new Set(), openBanks: new Set(), nextId: 1 };
+
+function renderUploadFolders() {
+  const sel = $("up-folder");
+  const prev = sel.value;
+  const names = state.sounds.banks.map((b) => b.name);
+  sel.innerHTML = names.map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join("") +
+    `<option value="__new__">New bank…</option>`;
+  sel.value = names.includes(prev) || prev === "__new__" ? prev : (names[0] || "__new__");
+  $("up-new").hidden = sel.value !== "__new__";
+}
+$("up-folder").onchange = () => {
+  $("up-new").hidden = $("up-folder").value !== "__new__";
+  if (!$("up-new").hidden) $("up-new").focus();
+  renderQueue();
+};
+$("up-new").oninput = renderQueue;
+
+function addFiles(files) {
+  for (const f of files) {
+    const bad = AUDIO_EXT.test(f.name) ? null : "Not a sound file (.ogg, .wav, .mp3, .flac)";
+    up.items.push({ id: up.nextId++, file: f, status: bad ? "error" : "queued", detail: bad, progress: 0 });
+  }
+  renderQueue();
+}
+
+function renderQueue() {
+  $("up-queue").innerHTML = up.items.map((it) => {
+    let st;
+    if (it.status === "uploading") st = `<progress max="1" value="${it.progress}"></progress>`;
+    else if (it.status === "done") st = `<span class="st ok">✓ uploaded</span>`;
+    else if (it.status === "error") st = `<span class="st err">✗ failed</span>`;
+    else st = `<span class="st wait">waiting</span>`;
+    const x = it.status === "queued" || it.status === "error"
+      ? `<button class="x" data-rm="${it.id}" title="Remove from list" aria-label="Remove">×</button>` : "<span></span>";
+    const detail = it.detail ? `<div class="detail${it.status === "error" ? " err" : ""}">${esc(it.detail)}</div>` : "";
+    return `<li><span class="fname" title="${esc(it.file.name)}">${esc(it.file.name)}</span>
+      <span class="fsize">${kb(it.file.size)}</span><span style="display:flex;gap:6px;align-items:center">${st}${x}</span>${detail}</li>`;
+  }).join("");
+  $("up-queue").querySelectorAll("[data-rm]").forEach((b) => b.onclick = () => {
+    up.items = up.items.filter((it) => it.id !== Number(b.dataset.rm)); renderQueue();
+  });
+  const queued = up.items.filter((it) => it.status === "queued").length;
+  const needName = $("up-folder").value === "__new__" && !$("up-new").value.trim();
+  $("up-start").disabled = up.busy || !queued || needName;
+  $("up-start").textContent = up.busy ? "Uploading…" : queued ? `Upload ${queued} file${queued > 1 ? "s" : ""}` : "Upload";
+  $("up-start").title = needName ? "Enter a name for the new bank" : "";
+  $("up-clear").hidden = up.busy || !up.items.some((it) => it.status === "done" || it.status === "error");
+}
+
+function uploadOne(it, folder, overwrite) {
+  return new Promise((resolve) => {
+    const fd = new FormData();
+    fd.append("file", it.file);
+    fd.append("folder", folder);
+    fd.append("overwrite", overwrite ? "true" : "false");
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/sounds/upload");
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) { it.progress = e.loaded / e.total; renderQueue(); } };
+    xhr.onload = () => {
+      let body = {};
+      try { body = JSON.parse(xhr.responseText); } catch (e) {}
+      if (xhr.status === 200) {
+        it.status = "done";
+        it.detail = (body.replaced ? "Replaced " : "Saved as ") + body.file;
+        up.recent.add(body.file);
+      } else {
+        it.status = "error";
+        it.detail = typeof body.detail === "string" ? body.detail : `HTTP ${xhr.status}`;
+        if (xhr.status === 409) it.detail += " — tick “Replace files with the same name” to overwrite it";
+      }
+      resolve();
+    };
+    xhr.onerror = () => { it.status = "error"; it.detail = "Network error"; resolve(); };
+    it.status = "uploading"; it.progress = 0; renderQueue();
+    xhr.send(fd);
+  });
+}
+
+$("up-start").onclick = async () => {
+  const sel = $("up-folder").value;
+  const folder = sel === "__new__" ? $("up-new").value.trim() : sel;
+  const overwrite = $("up-overwrite").checked;
+  up.busy = true; renderQueue();
+  for (const it of up.items.filter((i) => i.status === "queued")) await uploadOne(it, folder, overwrite);
+  up.busy = false;
+  // show the bank that received the files
+  for (const f of up.recent) up.openBanks.add(f.split("/")[0]);
+  try {
+    const sounds = await api("/api/sounds");
+    sounds.files = new Set(sounds.banks.flatMap((b) => b.tracks.map((t) => t.file)));
+    state.sounds = sounds;
+    renderBanks(); renderGrid();
+    const target = sel === "__new__" ? [...up.recent].pop()?.split("/")[0] : sel;
+    renderUploadFolders();
+    if (target && state.sounds.banks.some((b) => b.name === target)) { $("up-folder").value = target; $("up-new").hidden = true; $("up-new").value = ""; }
+    const bankEl = document.querySelector(`.bank[data-folder="${CSS.escape(target || "")}"]`);
+    if (bankEl) bankEl.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  } catch (e) { /* the next poll will pick it up */ }
+  renderQueue();
+};
+$("up-clear").onclick = () => { up.items = up.items.filter((it) => it.status === "queued"); renderQueue(); };
+$("up-input").onchange = (e) => { addFiles(e.target.files); e.target.value = ""; };
+
+const drop = $("drop");
+["dragenter", "dragover"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, () => drop.classList.remove("over")));
+drop.addEventListener("drop", (e) => { e.preventDefault(); addFiles(e.dataTransfer.files); });
+// a file dropped next to the drop zone shouldn't make the browser navigate away
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("drop", (e) => {
+  e.preventDefault();
+  if (!$("page-sounds").hidden && e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+});
 
 function showResult(kind, title, items) {
   $("save-result").innerHTML = `<div class="msg ${kind}"><strong>${esc(title)}</strong>${
@@ -431,6 +597,7 @@ function openEditor(r, c) {
   const cell = state.draft[state.layer].keys[r][c];
   ed.mode = cell ? cell.type : "sound";
   ed.folder = cell && cell.type === "sound" ? folderOf(cell.file) : "";   // start in the current sound's bank
+  ed.folderAuto = true;     // ...but searching then looks in all banks
   ed.query = "";
   renderEditor();
   $("editor").showModal();
@@ -464,8 +631,12 @@ function renderEditor() {
           `<option value="${esc(f)}"${f === ed.folder ? " selected" : ""}>${esc(f)}</option>`).join("")}</select>
       </div>
       <div class="opt-list" id="ed-sounds"></div>`;
-    $("ed-search").oninput = (e) => { ed.query = e.target.value; renderSoundList(); };
-    $("ed-folder").onchange = (e) => { ed.folder = e.target.value; renderSoundList(); };
+    $("ed-search").oninput = (e) => {
+      ed.query = e.target.value;
+      if (ed.folderAuto && ed.folder && ed.query.trim()) { ed.folder = ""; $("ed-folder").value = ""; }
+      renderSoundList();
+    };
+    $("ed-folder").onchange = (e) => { ed.folder = e.target.value; ed.folderAuto = false; renderSoundList(); };
     $("ed-search").onkeydown = (e) => {   // Enter picks the first match
       if (e.key === "Enter") { e.preventDefault(); const first = $("ed-sounds").querySelector(".opt"); if (first) first.click(); }
     };
@@ -560,7 +731,7 @@ $("save").onclick = async () => {
 };
 
 window.addEventListener("beforeunload", (e) => {
-  if (state.draft && changes().length) { e.preventDefault(); e.returnValue = ""; }
+  if ((state.draft && changes().length) || up.busy) { e.preventDefault(); e.returnValue = ""; }
 });
 
 // ---- routing ------------------------------------------------------------
@@ -625,7 +796,7 @@ async function poll() {
       const sounds = await api("/api/sounds");
       if (JSON.stringify(sounds.banks) !== JSON.stringify(state.sounds.banks)) {
         sounds.files = new Set(sounds.banks.flatMap((b) => b.tracks.map((t) => t.file)));
-        state.sounds = sounds; renderGrid(); renderBanks();
+        state.sounds = sounds; renderGrid(); renderBanks(); renderUploadFolders();
       }
       return;
     }

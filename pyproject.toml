@@ -10,6 +10,7 @@ dependencies = [
     # Веб-интерфейс (webapp.py)
     "fastapi>=0.115",
     "uvicorn>=0.30",
+    "python-multipart>=0.0.9",   # загрузка файлов через веб
     # Железо Raspberry Pi. На Windows/macOS не ставится — там работает только `--map`.
     "gpiozero>=2.0; sys_platform == 'linux'",
     "lgpio>=0.2.2; sys_platform == 'linux'",
